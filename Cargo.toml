@@ -1,0 +1,18 @@
+[package]
+name = "tado-timescale"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+
+# build optimization
+[profile.release]
+# https://nnethercote.github.io/perf-book/build-configuration.html#link-time-optimization
+lto = "fat"
+# https://nnethercote.github.io/perf-book/build-configuration.html#codegen-units
+codegen-units = 1
+# https://nnethercote.github.io/perf-book/build-configuration.html#abort-on-panic
+panic = "abort"
+# https://nnethercote.github.io/perf-book/build-configuration.html#strip-debug-info-and-symbols
+strip = "symbols"

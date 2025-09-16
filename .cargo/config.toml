@@ -1,0 +1,5 @@
+[build]
+# https://nnethercote.github.io/perf-book/build-configuration.html#cpu-specific-instructions
+# https://nnethercote.github.io/perf-book/build-configuration.html#linking
+#   - dev build goes from 6 s to 800 ms with lld to 600 ms with mold
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]

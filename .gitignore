@@ -1,0 +1,8 @@
+target/
+.idea/
+*.iml
+
+*.sqlite
+*.csv
+!test.csv
+*.pdf
