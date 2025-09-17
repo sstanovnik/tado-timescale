@@ -22,6 +22,8 @@ const OAUTH_TOKEN_URL: &str = "https://auth.tado.com/oauth/token";
 const OAUTH_CLIENT_ID: &str = "af44f89e-ae86-4ebe-905f-6bf759cf6473";
 const OAUTH_CLIENT_SECRET: &str = "WzedWFdqrCqWD45EGCwgwXfdxtsAQGR4BfDsGrxwBcGG4tFebgg1gv3fGcFqGb4W";
 const OAUTH_SCOPE: &str = "home.user";
+const JSON_BODY_MAX: u64 = 10 * 1024 * 1024;
+type HttpResponse = http::Response<ureq::Body>;
 
 #[derive(Debug)]
 pub enum TadoClientError {
@@ -73,7 +75,7 @@ pub struct TadoClient {
 
 impl TadoClient {
     pub fn new(username: impl Into<String>, password: impl Into<String>) -> Result<Self, TadoClientError> {
-        let agent = ureq::AgentBuilder::new().build();
+        let agent = ureq::agent();
 
         let mut state = OAuthState {
             token: None,
@@ -102,8 +104,11 @@ impl TadoClient {
     fn oauth_password_grant(agent: &ureq::Agent, state: &OAuthState) -> Result<OAuthToken, TadoClientError> {
         let resp = agent
             .post(OAUTH_TOKEN_URL)
-            .set("Accept", "application/json")
-            .send_form(&[
+            .header("Accept", "application/json")
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .send_form([
                 ("client_id", OAUTH_CLIENT_ID),
                 ("client_secret", OAUTH_CLIENT_SECRET),
                 ("grant_type", "password"),
@@ -121,8 +126,11 @@ impl TadoClient {
     ) -> Result<OAuthToken, TadoClientError> {
         let resp = agent
             .post(OAUTH_TOKEN_URL)
-            .set("Accept", "application/json")
-            .send_form(&[
+            .header("Accept", "application/json")
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .send_form([
                 ("client_id", OAUTH_CLIENT_ID),
                 ("client_secret", OAUTH_CLIENT_SECRET),
                 ("grant_type", "refresh_token"),
@@ -132,7 +140,7 @@ impl TadoClient {
         Self::parse_token_response(resp)
     }
 
-    fn parse_token_response(resp: Result<ureq::Response, ureq::Error>) -> Result<OAuthToken, TadoClientError> {
+    fn parse_token_response(resp: Result<HttpResponse, ureq::Error>) -> Result<OAuthToken, TadoClientError> {
         #[derive(serde::Deserialize)]
         struct R {
             access_token: String,
@@ -141,24 +149,26 @@ impl TadoClient {
             refresh_token: Option<String>,
         }
         match resp {
-            Ok(r) => {
-                let R {
-                    access_token,
-                    expires_in,
-                    refresh_token,
-                } = serde_json::from_reader(r.into_reader()).map_err(TadoClientError::Json)?;
-                let expires_at = Instant::now() + Duration::from_secs(expires_in);
-                Ok(OAuthToken {
-                    access_token,
-                    expires_at,
-                    refresh_token,
-                })
+            Ok(mut r) => {
+                if r.status().is_success() {
+                    let R {
+                        access_token,
+                        expires_in,
+                        refresh_token,
+                    } = read_json_body::<R>(&mut r)?;
+                    let expires_at = Instant::now() + Duration::from_secs(expires_in);
+                    Ok(OAuthToken {
+                        access_token,
+                        expires_at,
+                        refresh_token,
+                    })
+                } else {
+                    let status = r.status();
+                    let body = read_body_text(&mut r);
+                    Err(TadoClientError::Auth(format!("http {}: {}", status, body)))
+                }
             }
-            Err(ureq::Error::Transport(t)) => Err(TadoClientError::Transport(t.to_string())),
-            Err(ureq::Error::Status(status, resp)) => {
-                let body = resp.into_string().unwrap_or_else(|_| String::from("<no body>"));
-                Err(TadoClientError::Auth(format!("http {}: {}", status, body)))
-            }
+            Err(e) => Err(TadoClientError::Transport(e.to_string())),
         }
     }
 
@@ -178,51 +188,57 @@ impl TadoClient {
         Ok(s.token.as_ref().unwrap().access_token.clone())
     }
 
-    fn get_json<T: DeserializeOwned>(&self, path: &str, query: &[(&str, String)]) -> Result<T, TadoClientError> {
-        // Build request
-        let url = Self::url(path);
-        let mut req = self.agent.get(&url).set("Accept", "application/json");
+    fn call_get(
+        &self,
+        url: &str,
+        query: &[(&str, String)],
+        bearer: &str,
+    ) -> Result<HttpResponse, ureq::Error> {
+        let mut req = self
+            .agent
+            .get(url)
+            .header("Accept", "application/json");
         for (k, v) in query {
             req = req.query(k, v);
         }
+        req = req.header("Authorization", &format!("Bearer {}", bearer));
+        req.config().http_status_as_error(false).build().call()
+    }
 
-        // Add auth header
+    fn retry_after_refresh<T: DeserializeOwned>(&self, url: &str, query: &[(&str, String)]) -> Result<T, TadoClientError> {
+        {
+            let mut s = self.oauth.borrow_mut();
+            let refreshed = match &s.token.as_ref().and_then(|t| t.refresh_token.clone()) {
+                Some(r) => Self::oauth_refresh_grant(&self.agent, &s, r),
+                None => Self::oauth_password_grant(&self.agent, &s),
+            }?;
+            s.token = Some(refreshed);
+        }
+        let token2 = self.get_bearer()?;
+        match self.call_get(url, query, &token2) {
+            Ok(mut res2) if res2.status().is_success() => read_json_body::<T>(&mut res2),
+            Ok(mut res2) => {
+                let status = res2.status().as_u16();
+                let msg = read_body_text(&mut res2);
+                Err(TadoClientError::Http { status, message: msg })
+            }
+            Err(e) => Err(TadoClientError::Transport(e.to_string())),
+        }
+    }
+
+    fn get_json<T: DeserializeOwned>(&self, path: &str, query: &[(&str, String)]) -> Result<T, TadoClientError> {
+        let url = Self::url(path);
         let token = self.get_bearer()?;
-        req = req.set("Authorization", &format!("Bearer {}", token));
 
-        // Call, retry once on 401 after forcing refresh
-        match req.call() {
-            Ok(res) => serde_json::from_reader(res.into_reader()).map_err(TadoClientError::Json),
-            Err(ureq::Error::Status(401, _)) => {
-                // force refresh and retry
-                {
-                    let mut s = self.oauth.borrow_mut();
-                    let refreshed = match &s.token.as_ref().and_then(|t| t.refresh_token.clone()) {
-                        Some(r) => Self::oauth_refresh_grant(&self.agent, &s, r),
-                        None => Self::oauth_password_grant(&self.agent, &s),
-                    }?;
-                    s.token = Some(refreshed);
-                }
-                let token2 = self.get_bearer()?;
-                let mut req2 = self.agent.get(&url).set("Accept", "application/json");
-                for (k, v) in query {
-                    req2 = req2.query(k, v);
-                }
-                req2 = req2.set("Authorization", &format!("Bearer {}", token2));
-                match req2.call() {
-                    Ok(res2) => serde_json::from_reader(res2.into_reader()).map_err(TadoClientError::Json),
-                    Err(ureq::Error::Transport(t)) => Err(TadoClientError::Transport(t.to_string())),
-                    Err(ureq::Error::Status(status, res)) => {
-                        let body = res.into_string().unwrap_or_else(|_| String::from("<no body>"));
-                        Err(TadoClientError::Http { status, message: body })
-                    }
-                }
+        match self.call_get(&url, query, &token) {
+            Ok(res) if res.status().as_u16() == 401 => self.retry_after_refresh::<T>(&url, query),
+            Ok(mut res) if res.status().is_success() => read_json_body::<T>(&mut res),
+            Ok(mut res) => {
+                let status = res.status().as_u16();
+                let msg = read_body_text(&mut res);
+                Err(TadoClientError::Http { status, message: msg })
             }
-            Err(ureq::Error::Transport(t)) => Err(TadoClientError::Transport(t.to_string())),
-            Err(ureq::Error::Status(status, res)) => {
-                let body = res.into_string().unwrap_or_else(|_| String::from("<no body>"));
-                Err(TadoClientError::Http { status, message: body })
-            }
+            Err(e) => Err(TadoClientError::Transport(e.to_string())),
         }
     }
 
@@ -317,4 +333,15 @@ impl TadoClient {
         }
         self.get_json(&format!("/homes/{}/zones/{}/dayReport", home_id.0, zone_id.0), &q)
     }
+}
+
+fn read_json_body<T: DeserializeOwned>(res: &mut HttpResponse) -> Result<T, TadoClientError> {
+    let reader = res.body_mut().with_config().limit(JSON_BODY_MAX).reader();
+    serde_json::from_reader(reader).map_err(TadoClientError::Json)
+}
+
+fn read_body_text(res: &mut HttpResponse) -> String {
+    res.body_mut()
+        .read_to_string()
+        .unwrap_or_else(|_| String::from("<no body>"))
 }
