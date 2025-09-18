@@ -11,6 +11,10 @@ Questions are better than assumptions.
 When thinking of a list of tasks, or TODOs, do not forget to add a verification step at the end.
 In the verification step, you must consider the initial requirements and analyze the code to ensure that it meets them.
 
+If you are ever unsure about the details or usage of a library, stop what you are doing immediately and notify the user.
+It is extremely important that you do not get the details wrong and the user will be happy to provide you with
+official documentation that will guide you.
+
 # Repository Guidelines
 
 This repository is a Rust binary crate.
@@ -29,7 +33,7 @@ Use the commands and patterns below to build, test, and contribute consistently.
 - Linting: fix all Clippy warnings; treat warnings as errors (`-D warnings`).
 - The project must not use async.
 - Use ureq for HTTP requests.
-- Use Diesel for database access and the diesel-timescaledb crate for TimescaleDB support.
+- Use Diesel for database access
 
 ## What this project is supposed to do
 
