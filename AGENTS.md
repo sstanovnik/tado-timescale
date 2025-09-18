@@ -33,7 +33,7 @@ Use the commands and patterns below to build, test, and contribute consistently.
 - Linting: fix all Clippy warnings; treat warnings as errors (`-D warnings`).
 - The project must not use async.
 - Use ureq for HTTP requests.
-- Use Diesel for database access
+- Use Diesel for database access - the diesel cli is available as diesel.sh which automatically downloads the binary.
 
 ## What this project is supposed to do
 
@@ -47,3 +47,17 @@ There are two sources of data that Tado provides:
 Upon invocation, this program will load all available historical data, push it to the database,
 and then start a loop monitoring the realtime API.
 It will not overwrite realtime data with historical data - realtime data is higher resolution and more accurate.
+
+## Schema Generation & Verification
+
+Sandbox note
+- The ai is sandboxed and cannot access your DB. The human runs the script and pastes key outputs for ai review.
+
+Human: run
+- `./generate-schema.sh`
+
+Human: share back (paste into chat)
+- Full script output if any step fails, especially migration errors and hypertable list.
+
+AI review
+- Inspect output; if anything is off, propose a minimal patch or follow-up steps for the human to rerun.

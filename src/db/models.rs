@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::schema;
+use crate::schema;
 
 // Useful constants for standardizing `events.event_type` and measurement `source`.
 pub mod event_types {
@@ -195,6 +195,7 @@ pub struct NewZoneDevice {
 // Hypertable: climate_measurements
 #[derive(Debug, Clone, Queryable, Identifiable, Associations, Selectable, Serialize, Deserialize)]
 #[diesel(table_name = schema::climate_measurements)]
+#[diesel(primary_key(id, time))]
 #[diesel(belongs_to(Home))]
 #[diesel(belongs_to(Zone))]
 #[diesel(belongs_to(Device))]
@@ -204,7 +205,7 @@ pub struct ClimateMeasurement {
     pub home_id: i64,
     pub zone_id: Option<i64>,
     pub device_id: Option<i64>,
-    pub source: Option<String>,
+    pub source: String,
     pub inside_temp_c: Option<f64>,
     pub humidity_pct: Option<f64>,
     pub setpoint_temp_c: Option<f64>,
@@ -223,7 +224,7 @@ pub struct NewClimateMeasurement {
     pub home_id: i64,
     pub zone_id: Option<i64>,
     pub device_id: Option<i64>,
-    pub source: Option<String>,
+    pub source: String,
     pub inside_temp_c: Option<f64>,
     pub humidity_pct: Option<f64>,
     pub setpoint_temp_c: Option<f64>,
@@ -238,11 +239,13 @@ pub struct NewClimateMeasurement {
 // Hypertable: weather_measurements
 #[derive(Debug, Clone, Queryable, Identifiable, Associations, Selectable, Serialize, Deserialize)]
 #[diesel(table_name = schema::weather_measurements)]
+#[diesel(primary_key(id, time))]
 #[diesel(belongs_to(Home))]
 pub struct WeatherMeasurement {
     pub id: i64,
     pub time: DateTime<Utc>,
     pub home_id: i64,
+    pub source: String,
     pub outside_temp_c: Option<f64>,
     pub solar_intensity_pct: Option<f64>,
     pub weather_state: Option<String>,
@@ -253,6 +256,7 @@ pub struct WeatherMeasurement {
 pub struct NewWeatherMeasurement {
     pub time: DateTime<Utc>,
     pub home_id: i64,
+    pub source: String,
     pub outside_temp_c: Option<f64>,
     pub solar_intensity_pct: Option<f64>,
     pub weather_state: Option<String>,
@@ -261,6 +265,7 @@ pub struct NewWeatherMeasurement {
 // Hypertable: events (non-climate and general lifecycle events)
 #[derive(Debug, Clone, Queryable, Identifiable, Associations, Selectable, Serialize, Deserialize)]
 #[diesel(table_name = schema::events)]
+#[diesel(primary_key(id, time))]
 #[diesel(belongs_to(Home))]
 #[diesel(belongs_to(Zone))]
 #[diesel(belongs_to(Device))]
