@@ -188,16 +188,8 @@ impl TadoClient {
         Ok(s.token.as_ref().unwrap().access_token.clone())
     }
 
-    fn call_get(
-        &self,
-        url: &str,
-        query: &[(&str, String)],
-        bearer: &str,
-    ) -> Result<HttpResponse, ureq::Error> {
-        let mut req = self
-            .agent
-            .get(url)
-            .header("Accept", "application/json");
+    fn call_get(&self, url: &str, query: &[(&str, String)], bearer: &str) -> Result<HttpResponse, ureq::Error> {
+        let mut req = self.agent.get(url).header("Accept", "application/json");
         for (k, v) in query {
             req = req.query(k, v);
         }
@@ -205,7 +197,11 @@ impl TadoClient {
         req.config().http_status_as_error(false).build().call()
     }
 
-    fn retry_after_refresh<T: DeserializeOwned>(&self, url: &str, query: &[(&str, String)]) -> Result<T, TadoClientError> {
+    fn retry_after_refresh<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        query: &[(&str, String)],
+    ) -> Result<T, TadoClientError> {
         {
             let mut s = self.oauth.borrow_mut();
             let refreshed = match &s.token.as_ref().and_then(|t| t.refresh_token.clone()) {
