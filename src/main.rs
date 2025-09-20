@@ -37,8 +37,8 @@ pub fn run() -> Result<(), String> {
     info!("Connected to database");
 
     // 3) Init Tado client
-    let client = TadoClient::new(cfg.tado_username.clone(), cfg.tado_password.clone())
-        .map_err(|e| format!("Tado auth failed: {}", e))?;
+    let client = TadoClient::new(cfg.tado_refresh_token.clone(), cfg.tado_firefox_version.clone())
+        .map_err(|e| format!("Tado auth failed (refresh token invalid/expired?): {}", e))?;
     info!("Authenticated to Tado API");
 
     // 4) Discover homes

@@ -8,7 +8,8 @@
 //!   - Skips all endpoints under invitations
 //!
 //! Authentication
-//! - Performs OAuth2 password grant against Tado auth, manages refresh automatically.
+//! - Uses a browser-derived OAuth2 refresh token and rotates it in-memory.
+//! - Mimics browser headers for both token refresh and API requests.
 
 use crate::models::tado::*;
 use chrono::NaiveDate;
@@ -18,10 +19,11 @@ use std::cell::RefCell;
 use std::time::{Duration, Instant};
 
 const BASE_URL: &str = "https://my.tado.com/api/v2";
-const OAUTH_TOKEN_URL: &str = "https://auth.tado.com/oauth/token";
+// Matches the browser refresh endpoint observed in the app
+const OAUTH_TOKEN_URL: &str = "https://login.tado.com/oauth2/token?ngsw-bypass=true";
+// Public browser client id used by app.tado.com
 const OAUTH_CLIENT_ID: &str = "af44f89e-ae86-4ebe-905f-6bf759cf6473";
-const OAUTH_CLIENT_SECRET: &str = "WzedWFdqrCqWD45EGCwgwXfdxtsAQGR4BfDsGrxwBcGG4tFebgg1gv3fGcFqGb4W";
-const OAUTH_SCOPE: &str = "home.user";
+
 const JSON_BODY_MAX: u64 = 10 * 1024 * 1024;
 type HttpResponse = http::Response<ureq::Body>;
 
@@ -55,43 +57,68 @@ impl From<serde_json::Error> for TadoClientError {
 }
 
 #[derive(Debug, Clone)]
-struct OAuthToken {
+struct AccessToken {
     access_token: String,
     expires_at: Instant,
-    refresh_token: Option<String>,
 }
 
 #[derive(Debug)]
 struct OAuthState {
-    token: Option<OAuthToken>,
-    username: String,
-    password: String,
+    token: Option<AccessToken>,
+    refresh_token: String,
 }
 
 pub struct TadoClient {
     agent: ureq::Agent,
     oauth: RefCell<OAuthState>,
+    firefox_version: String,
 }
 
 impl TadoClient {
-    pub fn new(username: impl Into<String>, password: impl Into<String>) -> Result<Self, TadoClientError> {
+    fn browser_headers(&self) -> Vec<(&'static str, String)> {
+        let ver = &self.firefox_version;
+        let ua = format!(
+            "Mozilla/5.0 (X11; Linux x86_64; rv:{v}) Gecko/20100101 Firefox/{v}",
+            v = ver
+        );
+        vec![
+            ("User-Agent", ua),
+            ("Accept", "application/json, text/plain, */*".to_string()),
+            ("Accept-Language", "en-US,en;q=0.5".to_string()),
+            // Only advertise encodings that the client can transparently decode.
+            ("Accept-Encoding", "gzip, deflate".to_string()),
+            ("Referer", "https://app.tado.com/".to_string()),
+            ("Origin", "https://app.tado.com".to_string()),
+            ("DNT", "1".to_string()),
+            ("Sec-GPC", "1".to_string()),
+            ("Sec-Fetch-Dest", "empty".to_string()),
+            ("Sec-Fetch-Mode", "cors".to_string()),
+            ("Sec-Fetch-Site", "same-site".to_string()),
+            ("Connection", "keep-alive".to_string()),
+            ("Pragma", "no-cache".to_string()),
+            ("Cache-Control", "no-cache".to_string()),
+        ]
+    }
+    pub fn new(
+        initial_refresh_token: impl Into<String>,
+        firefox_version: impl Into<String>,
+    ) -> Result<Self, TadoClientError> {
         let agent = ureq::agent();
 
-        let mut state = OAuthState {
-            token: None,
-            username: username.into(),
-            password: password.into(),
+        let client = TadoClient {
+            agent,
+            oauth: RefCell::new(OAuthState {
+                token: None,
+                refresh_token: initial_refresh_token.into(),
+            }),
+            firefox_version: firefox_version.into(),
         };
 
-        // Fetch initial token
-        let token = Self::oauth_password_grant(&agent, &state)?;
-        state.token = Some(token);
-        info!("Tado OAuth: initial token acquired");
+        // Fetch initial access token using the provided refresh token
+        let _ = client.get_bearer()?;
+        info!("Tado OAuth: initial access token acquired via refresh grant");
 
-        Ok(TadoClient {
-            agent,
-            oauth: RefCell::new(state),
-        })
+        Ok(client)
     }
 
     fn url(path: &str) -> String {
@@ -102,49 +129,29 @@ impl TadoClient {
         }
     }
 
-    fn oauth_password_grant(agent: &ureq::Agent, state: &OAuthState) -> Result<OAuthToken, TadoClientError> {
-        debug!("Tado OAuth: password grant start");
-        let resp = agent
-            .post(OAUTH_TOKEN_URL)
-            .header("Accept", "application/json")
-            .config()
-            .http_status_as_error(false)
-            .build()
-            .send_form([
-                ("client_id", OAUTH_CLIENT_ID),
-                ("client_secret", OAUTH_CLIENT_SECRET),
-                ("grant_type", "password"),
-                ("scope", OAUTH_SCOPE),
-                ("username", state.username.as_str()),
-                ("password", state.password.as_str()),
-            ]);
-        Self::parse_token_response(resp)
-    }
-
-    fn oauth_refresh_grant(
-        agent: &ureq::Agent,
-        _state: &OAuthState,
-        refresh: &str,
-    ) -> Result<OAuthToken, TadoClientError> {
+    fn oauth_refresh_grant(&self, refresh: &str) -> Result<(AccessToken, Option<String>), TadoClientError> {
         let _ = refresh; // never log refresh token
-        info!("Tado OAuth: refreshing access token");
-        let resp = agent
-            .post(OAUTH_TOKEN_URL)
-            .header("Accept", "application/json")
+        info!("Tado OAuth: refreshing access token (browser flow)");
+        let mut req = self.agent.post(OAUTH_TOKEN_URL);
+        for (k, v) in self.browser_headers() {
+            req = req.header(k, &v);
+        }
+        let resp = req
+            .header("Content-Type", "application/x-www-form-urlencoded")
             .config()
             .http_status_as_error(false)
             .build()
             .send_form([
                 ("client_id", OAUTH_CLIENT_ID),
-                ("client_secret", OAUTH_CLIENT_SECRET),
                 ("grant_type", "refresh_token"),
-                ("scope", OAUTH_SCOPE),
                 ("refresh_token", refresh),
             ]);
         Self::parse_token_response(resp)
     }
 
-    fn parse_token_response(resp: Result<HttpResponse, ureq::Error>) -> Result<OAuthToken, TadoClientError> {
+    fn parse_token_response(
+        resp: Result<HttpResponse, ureq::Error>,
+    ) -> Result<(AccessToken, Option<String>), TadoClientError> {
         #[derive(serde::Deserialize)]
         struct R {
             access_token: String,
@@ -161,13 +168,12 @@ impl TadoClient {
                         refresh_token,
                     } = read_json_body::<R>(&mut r)?;
                     let expires_at = Instant::now() + Duration::from_secs(expires_in);
-                    let tok = OAuthToken {
+                    let tok = AccessToken {
                         access_token,
                         expires_at,
-                        refresh_token,
                     };
                     debug!("Tado OAuth: token parsed; expires_in_secs ~{}", expires_in);
-                    Ok(tok)
+                    Ok((tok, refresh_token))
                 } else {
                     let status = r.status();
                     let body = read_body_text(&mut r);
@@ -185,23 +191,21 @@ impl TadoClient {
             Some(t) => Instant::now() + Duration::from_secs(30) >= t.expires_at,
         };
         if needs_refresh {
-            let new_tok = match &s.token.as_ref().and_then(|t| t.refresh_token.clone()) {
-                Some(r) => {
-                    info!("Tado OAuth: access token expired; using refresh grant");
-                    Self::oauth_refresh_grant(&self.agent, &s, r)
-                }
-                None => {
-                    info!("Tado OAuth: access token missing/expired; using password grant");
-                    Self::oauth_password_grant(&self.agent, &s)
-                }
-            }?;
-            s.token = Some(new_tok);
+            info!("Tado OAuth: access token missing/expired; using refresh grant");
+            let (new_access, new_refresh) = self.oauth_refresh_grant(&s.refresh_token)?;
+            if let Some(r) = new_refresh {
+                s.refresh_token = r;
+            }
+            s.token = Some(new_access);
         }
         Ok(s.token.as_ref().unwrap().access_token.clone())
     }
 
     fn call_get(&self, url: &str, query: &[(&str, String)], bearer: &str) -> Result<HttpResponse, ureq::Error> {
-        let mut req = self.agent.get(url).header("Accept", "application/json");
+        let mut req = self.agent.get(url);
+        for (k, v) in self.browser_headers() {
+            req = req.header(k, &v);
+        }
         for (k, v) in query {
             req = req.query(k, v);
         }
@@ -216,11 +220,11 @@ impl TadoClient {
     ) -> Result<T, TadoClientError> {
         {
             let mut s = self.oauth.borrow_mut();
-            let refreshed = match &s.token.as_ref().and_then(|t| t.refresh_token.clone()) {
-                Some(r) => Self::oauth_refresh_grant(&self.agent, &s, r),
-                None => Self::oauth_password_grant(&self.agent, &s),
-            }?;
-            s.token = Some(refreshed);
+            let (new_access, new_refresh) = self.oauth_refresh_grant(&s.refresh_token)?;
+            if let Some(r) = new_refresh {
+                s.refresh_token = r;
+            }
+            s.token = Some(new_access);
         }
         let token2 = self.get_bearer()?;
         match self.call_get(url, query, &token2) {
