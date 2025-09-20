@@ -14,4 +14,3 @@ impl Config {
         Config { database_url }
     }
 }
-
