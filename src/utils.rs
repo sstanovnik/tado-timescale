@@ -1,10 +1,10 @@
-use chrono::{DateTime, Utc};
-use core::fmt;
-use std::error::Error;
-use std::fmt::{Display, Formatter};
-
 use crate::client::{TadoClient, TadoClientError};
 use crate::models::tado::{HomeId, ZoneId};
+use chrono::{DateTime, Utc};
+use core::fmt;
+use serde::Serialize;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 
 /// Errors that can occur while determining a zone's historical start time.
 #[derive(Debug)]
@@ -64,4 +64,9 @@ pub fn determine_zone_start_time(
         .ok_or(StartTimeError::ZoneNotFound(zone_id))?;
 
     zone.date_created.ok_or(StartTimeError::MissingDateCreated(zone_id))
+}
+
+/// Serialize a serde-backed enum into its string name (e.g. SCREAMING_SNAKE_CASE).
+pub fn serde_enum_name<T: Serialize>(val: &T) -> Option<String> {
+    serde_json::to_value(val).ok()?.as_str().map(|s| s.to_string())
 }
