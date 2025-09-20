@@ -1,3 +1,4 @@
+use log::info;
 use crate::client::TadoClient;
 use crate::db::models::{NewClimateMeasurement, NewWeatherMeasurement};
 use crate::models::tado::{self, HomeId};
@@ -9,6 +10,7 @@ use diesel::PgConnection;
 use std::collections::BTreeMap;
 use std::thread;
 use std::time::{Duration, Instant};
+use log::debug;
 
 pub fn run_loop(
     conn: &mut PgConnection,
@@ -16,6 +18,11 @@ pub fn run_loop(
     home_ids: &[i64],
     interval: Duration,
 ) -> Result<(), String> {
+    info!(
+        "Realtime loop started (homes={}, interval={}s)",
+        home_ids.len(),
+        interval.as_secs()
+    );
     loop {
         let tick_start = Instant::now();
 
@@ -23,6 +30,7 @@ pub fn run_loop(
             let zones = client
                 .get_zones(HomeId(*home_id))
                 .map_err(|e| format!("get_zones({home_id}) failed: {}", e))?;
+            debug!("Realtime: collecting home {} ({} zones)", home_id, zones.len());
             collect_home(conn, client, *home_id, &zones)?;
         }
 
@@ -31,6 +39,10 @@ pub fn run_loop(
         if elapsed < interval {
             thread::sleep(interval - elapsed);
         }
+        debug!(
+            "Realtime tick completed in {} ms",
+            tick_start.elapsed().as_millis()
+        );
     }
 }
 
@@ -104,7 +116,10 @@ fn collect_home(
         };
         let state = match client.get_zone_state(HomeId(home_id), zone_id) {
             Ok(s) => s,
-            Err(_) => continue,
+            Err(e) => {
+                debug!("Realtime: get_zone_state({}, {}) failed: {}", home_id, zone_id.0, e);
+                continue;
+            }
         };
 
         let now_ts = Utc::now();
@@ -195,7 +210,10 @@ fn collect_home(
                 .first::<i64>(conn)
             {
                 Ok(id) => id,
-                Err(_) => continue,
+                Err(e) => {
+                    debug!("Realtime: device {} not found in DB: {}", serial, e);
+                    continue;
+                }
             };
             let ts = d
                 .connection_state

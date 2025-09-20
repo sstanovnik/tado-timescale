@@ -6,10 +6,13 @@ use chrono::Utc;
 use diesel::prelude::*;
 use diesel::PgConnection;
 use std::collections::BTreeMap;
+use log::{debug, info};
 
 pub fn sync_all(conn: &mut PgConnection, client: &TadoClient, me: &tado::User, home_ids: &[i64]) -> Result<(), String> {
+    info!("Syncing references for {} home(s)", home_ids.len());
     let db_user_id = upsert_user(conn, me)?;
     for home_id in home_ids {
+        info!("Refs: syncing home {}", home_id);
         let home = client
             .get_home(tado::HomeId(*home_id))
             .map_err(|e| format!("get_home({home_id}) failed: {}", e))?;
@@ -26,10 +29,18 @@ pub fn sync_all(conn: &mut PgConnection, client: &TadoClient, me: &tado::User, h
             .map_err(|e| format!("get_devices({home_id}) failed: {}", e))?;
         let device_map = upsert_devices(conn, db_home_id, &devices)?;
 
+        debug!(
+            "Refs: fetched home {} (zones={}, devices={})",
+            home_id,
+            zones.len(),
+            devices.len()
+        );
+
         let device_list = client
             .get_device_list(tado::HomeId(*home_id))
             .map_err(|e| format!("get_device_list({home_id}) failed: {}", e))?;
         upsert_zone_devices(conn, &zone_map, &device_map, device_list)?;
+        info!("Refs: home {} complete", home_id);
     }
     Ok(())
 }

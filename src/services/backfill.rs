@@ -8,12 +8,14 @@ use diesel::dsl::{max, min};
 use diesel::prelude::*;
 use diesel::PgConnection;
 use std::collections::BTreeMap;
+use log::{debug, info};
 
 pub fn run_for_home(conn: &mut PgConnection, client: &TadoClient, home_id: HomeId) -> Result<(), String> {
     // Fetch zones to decide backfill per zone
     let zones = client
         .get_zones(home_id)
         .map_err(|e| format!("get_zones({}) failed: {}", home_id.0, e))?;
+    info!("Backfill: home {} has {} zone(s)", home_id.0, zones.len());
 
     // Resolve DB home id
     let db_home_id: i64 = schema::homes::dsl::homes
@@ -38,6 +40,11 @@ pub fn run_for_home(conn: &mut PgConnection, client: &TadoClient, home_id: HomeI
             zone_id_map.insert(zid.0, db_zone_id);
         }
     }
+    debug!(
+        "Backfill: home {} eligible zones with date_created: {}",
+        home_id.0,
+        zone_id_map.len()
+    );
 
     for z in &zones {
         let (Some(zone_id), Some(_)) = (z.id, z.date_created) else {
@@ -53,6 +60,13 @@ pub fn run_for_home(conn: &mut PgConnection, client: &TadoClient, home_id: HomeI
         if from >= to {
             continue;
         }
+        info!(
+            "Backfill: home {} zone {} from {} to {}",
+            home_id.0,
+            zone_id.0,
+            from,
+            to
+        );
         backfill_zone_range(conn, client, home_id, db_home_id, zone_id, db_zone_id, from, to)?;
     }
 
@@ -107,8 +121,11 @@ fn backfill_zone_range(
     // Iterate by day using local UTC date boundaries
     let mut cursor = from.date_naive();
     let end_date = to.date_naive();
+    let mut inserted_total: usize = 0;
+    let mut days: u64 = 0;
 
     while cursor <= end_date {
+        days += 1;
         let report = client
             .get_zone_day_report(home_id, zone_id, Some(cursor))
             .map_err(|e| {
@@ -214,16 +231,24 @@ fn backfill_zone_range(
 
         let rows: Vec<NewClimateMeasurement> = by_ts.into_values().collect();
         if !rows.is_empty() {
-            diesel::insert_into(C::climate_measurements)
+            let inserted = diesel::insert_into(C::climate_measurements)
                 .values(&rows)
                 .on_conflict((C::time, C::home_id, C::source, C::zone_id, C::device_id))
                 .do_nothing()
                 .execute(conn)
                 .map_err(|e| format!("insert historical climate rows failed: {}", e))?;
+            inserted_total += inserted as usize;
         }
 
         cursor = cursor.succ_opt().unwrap_or_else(|| NaiveDate::MAX);
     }
+
+    info!(
+        "Backfill: zone {} complete ({} day(s), {} row(s) inserted)",
+        zone_id.0,
+        days,
+        inserted_total
+    );
 
     Ok(())
 }

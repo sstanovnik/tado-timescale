@@ -14,7 +14,7 @@ use chrono::NaiveDate;
 use serde::de::DeserializeOwned;
 use std::cell::RefCell;
 use std::time::{Duration, Instant};
-
+use log::{debug, info};
 use crate::models::tado::*;
 
 const BASE_URL: &str = "https://my.tado.com/api/v2";
@@ -86,6 +86,7 @@ impl TadoClient {
         // Fetch initial token
         let token = Self::oauth_password_grant(&agent, &state)?;
         state.token = Some(token);
+        info!("Tado OAuth: initial token acquired");
 
         Ok(TadoClient {
             agent,
@@ -102,6 +103,7 @@ impl TadoClient {
     }
 
     fn oauth_password_grant(agent: &ureq::Agent, state: &OAuthState) -> Result<OAuthToken, TadoClientError> {
+        debug!("Tado OAuth: password grant start");
         let resp = agent
             .post(OAUTH_TOKEN_URL)
             .header("Accept", "application/json")
@@ -124,6 +126,8 @@ impl TadoClient {
         _state: &OAuthState,
         refresh: &str,
     ) -> Result<OAuthToken, TadoClientError> {
+        let _ = refresh; // never log refresh token
+        info!("Tado OAuth: refreshing access token");
         let resp = agent
             .post(OAUTH_TOKEN_URL)
             .header("Accept", "application/json")
@@ -157,11 +161,13 @@ impl TadoClient {
                         refresh_token,
                     } = read_json_body::<R>(&mut r)?;
                     let expires_at = Instant::now() + Duration::from_secs(expires_in);
-                    Ok(OAuthToken {
+                    let tok = OAuthToken {
                         access_token,
                         expires_at,
                         refresh_token,
-                    })
+                    };
+                    debug!("Tado OAuth: token parsed; expires_in_secs ~{}", expires_in);
+                    Ok(tok)
                 } else {
                     let status = r.status();
                     let body = read_body_text(&mut r);
@@ -180,8 +186,14 @@ impl TadoClient {
         };
         if needs_refresh {
             let new_tok = match &s.token.as_ref().and_then(|t| t.refresh_token.clone()) {
-                Some(r) => Self::oauth_refresh_grant(&self.agent, &s, r),
-                None => Self::oauth_password_grant(&self.agent, &s),
+                Some(r) => {
+                    info!("Tado OAuth: access token expired; using refresh grant");
+                    Self::oauth_refresh_grant(&self.agent, &s, r)
+                }
+                None => {
+                    info!("Tado OAuth: access token missing/expired; using password grant");
+                    Self::oauth_password_grant(&self.agent, &s)
+                }
             }?;
             s.token = Some(new_tok);
         }
@@ -225,7 +237,7 @@ impl TadoClient {
     fn get_json<T: DeserializeOwned>(&self, path: &str, query: &[(&str, String)]) -> Result<T, TadoClientError> {
         let url = Self::url(path);
         let token = self.get_bearer()?;
-
+        debug!("GET {} ({} query params)", path, query.len());
         match self.call_get(&url, query, &token) {
             Ok(res) if res.status().as_u16() == 401 => self.retry_after_refresh::<T>(&url, query),
             Ok(mut res) if res.status().is_success() => read_json_body::<T>(&mut res),
