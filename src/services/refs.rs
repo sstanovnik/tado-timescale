@@ -2,11 +2,12 @@ use crate::client::TadoClient;
 use crate::db::models as dbm;
 use crate::models::tado;
 use crate::schema;
+use crate::utils::serde_enum_name;
 use chrono::Utc;
 use diesel::prelude::*;
 use diesel::PgConnection;
+use log::{debug, info, warn};
 use std::collections::BTreeMap;
-use log::{debug, info};
 
 pub fn sync_all(conn: &mut PgConnection, client: &TadoClient, me: &tado::User, home_ids: &[i64]) -> Result<(), String> {
     info!("Syncing references for {} home(s)", home_ids.len());
@@ -48,8 +49,12 @@ pub fn sync_all(conn: &mut PgConnection, client: &TadoClient, me: &tado::User, h
 fn upsert_user(conn: &mut PgConnection, me: &tado::User) -> Result<i64, String> {
     use schema::users::dsl as U;
 
+    let tado_user_id = me
+        .id
+        .clone()
+        .ok_or_else(|| "user id missing in /me response".to_string())?;
     let new_row = dbm::NewUser {
-        tado_user_id: me.id.clone().unwrap_or_default(),
+        tado_user_id,
         email: me.email.clone(),
         username: me.username.clone(),
         name: me.name.clone(),
@@ -88,7 +93,7 @@ fn upsert_home(conn: &mut PgConnection, home: &tado::Home) -> Result<i64, String
         tado_home_id,
         name,
         timezone: home.date_time_zone.clone(),
-        temperature_unit: home.temperature_unit.as_ref().map(|u| format!("{:?}", u)),
+        temperature_unit: home.temperature_unit.as_ref().and_then(|u| serde_enum_name(u)),
         address_line1: home.details.address.as_ref().and_then(|a| a.address_line1.clone()),
         address_line2: home.details.address.as_ref().and_then(|a| a.address_line2.clone()),
         zip_code: home.details.address.as_ref().and_then(|a| a.zip_code.clone()),
@@ -156,7 +161,7 @@ fn upsert_zones(conn: &mut PgConnection, db_home_id: i64, zones: &[tado::Zone]) 
             home_id: db_home_id,
             tado_zone_id,
             name: z.name.clone(),
-            zone_type: z.r#type.as_ref().map(|t| format!("{:?}", t)),
+            zone_type: z.r#type.as_ref().and_then(|t| serde_enum_name(t)),
             date_created: z.date_created,
         };
         diesel::insert_into(Z::zones)
@@ -189,15 +194,21 @@ fn upsert_devices(
     use schema::devices::dsl as D;
     let mut map = BTreeMap::new();
     for d in devices {
-        let tado_device_id = d.serial_no.as_ref().map(|s| s.0.clone()).unwrap_or_default();
+        let tado_device_id = match d.serial_no.as_ref().map(|s| s.0.clone()) {
+            Some(s) if !s.is_empty() => s,
+            _ => {
+                warn!("Refs: skipping device without serial number");
+                continue;
+            }
+        };
         let new_row = dbm::NewDevice {
             home_id: db_home_id,
             tado_device_id: tado_device_id.clone(),
             short_serial_no: d.short_serial_no.clone(),
             device_type: d.device_type.as_ref().map(|t| t.0.clone()),
             firmware_version: d.current_fw_version.clone(),
-            orientation: d.orientation.as_ref().map(|o| format!("{:?}", o)),
-            battery_state: d.battery_state.as_ref().map(|b| format!("{:?}", b)),
+            orientation: d.orientation.as_ref().and_then(|o| serde_enum_name(o)),
+            battery_state: d.battery_state.as_ref().and_then(|b| serde_enum_name(b)),
             characteristics: serde_json::to_value(&d.characteristics).ok(),
         };
         diesel::insert_into(D::devices)

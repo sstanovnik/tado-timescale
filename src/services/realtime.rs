@@ -1,5 +1,5 @@
-use log::info;
 use crate::client::TadoClient;
+use crate::db::models::event_source;
 use crate::db::models::{NewClimateMeasurement, NewWeatherMeasurement};
 use crate::models::tado::{self, HomeId};
 use crate::schema;
@@ -7,10 +7,10 @@ use crate::utils::serde_enum_name;
 use chrono::Utc;
 use diesel::prelude::*;
 use diesel::PgConnection;
+use log::{debug, info, warn};
 use std::collections::BTreeMap;
 use std::thread;
 use std::time::{Duration, Instant};
-use log::debug;
 
 pub fn run_loop(
     conn: &mut PgConnection,
@@ -23,15 +23,51 @@ pub fn run_loop(
         home_ids.len(),
         interval.as_secs()
     );
+    // Build caches for DB identifiers used every tick
+    use schema::homes::dsl as H;
+    use schema::zones::dsl as Z;
+
+    // Cache: tado_home_id -> db_home_id
+    let mut home_db_ids: BTreeMap<i64, i64> = BTreeMap::new();
+    // Cache: tado_home_id -> (tado_zone_id -> db_zone_id)
+    let mut zone_maps: BTreeMap<i64, BTreeMap<i64, i64>> = BTreeMap::new();
+
+    for home_id in home_ids {
+        let db_home_id: i64 = H::homes
+            .filter(H::tado_home_id.eq(*home_id))
+            .select(H::id)
+            .first(conn)
+            .map_err(|e| format!("fetch db_home_id failed: {}", e))?;
+        home_db_ids.insert(*home_id, db_home_id);
+
+        // Build zone map once per home from DB state
+        let rows: Vec<(i64, i64)> = Z::zones
+            .filter(Z::home_id.eq(db_home_id))
+            .select((Z::tado_zone_id, Z::id))
+            .load(conn)
+            .map_err(|e| format!("fetch zone map failed: {}", e))?;
+        let mut zmap = BTreeMap::new();
+        for (tado_zone_id, db_zone_id) in rows {
+            zmap.insert(tado_zone_id, db_zone_id);
+        }
+        zone_maps.insert(*home_id, zmap);
+    }
+
     loop {
         let tick_start = Instant::now();
 
         for home_id in home_ids {
+            let db_home_id = match home_db_ids.get(home_id).copied() {
+                Some(id) => id,
+                None => continue,
+            };
+            let empty: BTreeMap<i64, i64> = BTreeMap::new();
+            let zone_map = zone_maps.get(home_id).unwrap_or(&empty);
             let zones = client
                 .get_zones(HomeId(*home_id))
                 .map_err(|e| format!("get_zones({home_id}) failed: {}", e))?;
             debug!("Realtime: collecting home {} ({} zones)", home_id, zones.len());
-            collect_home(conn, client, *home_id, &zones)?;
+            collect_home(conn, client, db_home_id, *home_id, &zones, zone_map)?;
         }
 
         // Maintain steady cadence
@@ -39,43 +75,21 @@ pub fn run_loop(
         if elapsed < interval {
             thread::sleep(interval - elapsed);
         }
-        debug!(
-            "Realtime tick completed in {} ms",
-            tick_start.elapsed().as_millis()
-        );
+        debug!("Realtime tick completed in {} ms", tick_start.elapsed().as_millis());
     }
 }
 
 fn collect_home(
     conn: &mut PgConnection,
     client: &TadoClient,
+    db_home_id: i64,
     home_id: i64,
     zones: &[tado::Zone],
+    zone_id_map: &BTreeMap<i64, i64>,
 ) -> Result<(), String> {
     use schema::climate_measurements::dsl as C;
     use schema::devices::dsl as D;
-    use schema::homes::dsl as H;
     use schema::weather_measurements::dsl as W;
-    use schema::zones::dsl as Z;
-
-    let db_home_id: i64 = H::homes
-        .filter(H::tado_home_id.eq(home_id))
-        .select(H::id)
-        .first(conn)
-        .map_err(|e| format!("fetch db_home_id failed: {}", e))?;
-
-    // zone -> db id map
-    let mut zone_id_map = BTreeMap::new();
-    for z in zones {
-        if let Some(zid) = z.id {
-            let db_zone_id: i64 = Z::zones
-                .filter(Z::home_id.eq(db_home_id).and(Z::tado_zone_id.eq(zid.0)))
-                .select(Z::id)
-                .first(conn)
-                .map_err(|e| format!("fetch db_zone_id failed: {}", e))?;
-            zone_id_map.insert(zid.0, db_zone_id);
-        }
-    }
 
     // Weather (home-scoped)
     if let Ok(weather) = client.get_weather(HomeId(home_id)) {
@@ -95,16 +109,19 @@ fn collect_home(
         let row = NewWeatherMeasurement {
             time: ts,
             home_id: db_home_id,
-            source: "realtime".into(),
+            source: event_source::REALTIME.into(),
             outside_temp_c: weather.outside_temperature.as_ref().and_then(|t| t.celsius),
             solar_intensity_pct: weather.solar_intensity.as_ref().and_then(|s| s.percentage),
             weather_state,
         };
-        let _ = diesel::insert_into(W::weather_measurements)
+        if let Err(e) = diesel::insert_into(W::weather_measurements)
             .values(&row)
             .on_conflict((W::home_id, W::time, W::source))
             .do_nothing()
-            .execute(conn);
+            .execute(conn)
+        {
+            warn!("Realtime: insert weather row failed for home {}: {}", home_id, e);
+        }
     }
 
     // Zones realtime
@@ -180,7 +197,7 @@ fn collect_home(
             home_id: db_home_id,
             zone_id: Some(db_zone_id),
             device_id: None,
-            source: "realtime".into(),
+            source: event_source::REALTIME.into(),
             inside_temp_c,
             humidity_pct,
             setpoint_temp_c,
@@ -191,11 +208,17 @@ fn collect_home(
             battery_low: None,
             connection_up: None,
         };
-        let _ = diesel::insert_into(C::climate_measurements)
+        if let Err(e) = diesel::insert_into(C::climate_measurements)
             .values(&row)
             .on_conflict((C::time, C::home_id, C::source, C::zone_id, C::device_id))
             .do_nothing()
-            .execute(conn);
+            .execute(conn)
+        {
+            warn!(
+                "Realtime: insert climate row failed for home {}, zone {}: {}",
+                home_id, zone_id.0, e
+            );
+        }
     }
 
     // Devices realtime (battery/connection)
@@ -228,7 +251,7 @@ fn collect_home(
                 home_id: db_home_id,
                 zone_id: None,
                 device_id: Some(db_device_id),
-                source: "realtime".into(),
+                source: event_source::REALTIME.into(),
                 inside_temp_c: None,
                 humidity_pct: None,
                 setpoint_temp_c: None,
@@ -239,11 +262,17 @@ fn collect_home(
                 battery_low,
                 connection_up: conn_up,
             };
-            let _ = diesel::insert_into(C::climate_measurements)
+            if let Err(e) = diesel::insert_into(C::climate_measurements)
                 .values(&row)
                 .on_conflict((C::time, C::home_id, C::source, C::zone_id, C::device_id))
                 .do_nothing()
-                .execute(conn);
+                .execute(conn)
+            {
+                warn!(
+                    "Realtime: insert device climate row failed for home {}, device {}: {}",
+                    home_id, serial, e
+                );
+            }
         }
     }
 

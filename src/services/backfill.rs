@@ -1,4 +1,5 @@
 use crate::client::TadoClient;
+use crate::db::models::event_source;
 use crate::db::models::NewClimateMeasurement;
 use crate::models::tado::{self, HomeId, ZoneId};
 use crate::schema;
@@ -7,8 +8,8 @@ use chrono::{DateTime, NaiveDate, Utc};
 use diesel::dsl::{max, min};
 use diesel::prelude::*;
 use diesel::PgConnection;
-use std::collections::BTreeMap;
 use log::{debug, info};
+use std::collections::BTreeMap;
 
 pub fn run_for_home(conn: &mut PgConnection, client: &TadoClient, home_id: HomeId) -> Result<(), String> {
     // Fetch zones to decide backfill per zone
@@ -62,10 +63,7 @@ pub fn run_for_home(conn: &mut PgConnection, client: &TadoClient, home_id: HomeI
         }
         info!(
             "Backfill: home {} zone {} from {} to {}",
-            home_id.0,
-            zone_id.0,
-            from,
-            to
+            home_id.0, zone_id.0, from, to
         );
         backfill_zone_range(conn, client, home_id, db_home_id, zone_id, db_zone_id, from, to)?;
     }
@@ -85,7 +83,7 @@ fn compute_backfill_window(
             C::home_id
                 .eq(db_home_id)
                 .and(C::zone_id.eq(db_zone_id))
-                .and(C::source.eq("historical")),
+                .and(C::source.eq(event_source::HISTORICAL)),
         )
         .select(max(C::time))
         .first(conn)
@@ -95,7 +93,7 @@ fn compute_backfill_window(
             C::home_id
                 .eq(db_home_id)
                 .and(C::zone_id.eq(db_zone_id))
-                .and(C::source.eq("realtime")),
+                .and(C::source.eq(event_source::REALTIME)),
         )
         .select(min(C::time))
         .first(conn)
@@ -245,9 +243,7 @@ fn backfill_zone_range(
 
     info!(
         "Backfill: zone {} complete ({} day(s), {} row(s) inserted)",
-        zone_id.0,
-        days,
-        inserted_total
+        zone_id.0, days, inserted_total
     );
 
     Ok(())
@@ -259,7 +255,7 @@ fn new_row(ts: DateTime<Utc>, db_home_id: i64, db_zone_id: i64) -> NewClimateMea
         home_id: db_home_id,
         zone_id: Some(db_zone_id),
         device_id: None,
-        source: "historical".to_string(),
+        source: event_source::HISTORICAL.to_string(),
         inside_temp_c: None,
         humidity_pct: None,
         setpoint_temp_c: None,

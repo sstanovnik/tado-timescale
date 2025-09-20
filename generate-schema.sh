@@ -4,7 +4,7 @@
 # - Start TimescaleDB (docker compose)
 # - Apply Diesel migrations
 # - Build the crate (type-check models)
-# - Generate src/db/schema.rs from the live DB
+# - Generate src/schema.rs from the live DB
 # - Show TimescaleDB hypertables
 #
 # Assumptions: docker, docker compose v2, psql, cargo, and ./diesel.sh are available.
@@ -33,4 +33,3 @@ echo "=== 6) Verify hypertables ==="
 psql "$DATABASE_URL" -c "select hypertable_name from timescaledb_information.hypertables order by 1;"
 
 echo "=== Done ==="
-

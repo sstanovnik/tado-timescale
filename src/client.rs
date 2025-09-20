@@ -10,12 +10,12 @@
 //! Authentication
 //! - Performs OAuth2 password grant against Tado auth, manages refresh automatically.
 
+use crate::models::tado::*;
 use chrono::NaiveDate;
+use log::{debug, info};
 use serde::de::DeserializeOwned;
 use std::cell::RefCell;
 use std::time::{Duration, Instant};
-use log::{debug, info};
-use crate::models::tado::*;
 
 const BASE_URL: &str = "https://my.tado.com/api/v2";
 const OAUTH_TOKEN_URL: &str = "https://auth.tado.com/oauth/token";
