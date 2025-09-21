@@ -13,7 +13,7 @@
 
 use crate::models::tado::*;
 use chrono::NaiveDate;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use serde::de::DeserializeOwned;
 use std::cell::RefCell;
 use std::time::{Duration, Instant};
@@ -178,7 +178,7 @@ impl TadoClient {
                         access_token,
                         expires_in,
                         refresh_token,
-                    } = read_json_body::<R>(&mut r)?;
+                    } = read_json_body::<R>(&mut r, OAUTH_TOKEN_URL)?;
                     let expires_at = Instant::now() + Duration::from_secs(expires_in);
                     let tok = AccessToken {
                         access_token,
@@ -244,7 +244,7 @@ impl TadoClient {
         }
         let token2 = self.get_bearer()?;
         match self.call_get(url, query, &token2) {
-            Ok(mut res2) if res2.status().is_success() => read_json_body::<T>(&mut res2),
+            Ok(mut res2) if res2.status().is_success() => read_json_body::<T>(&mut res2, url),
             Ok(mut res2) => {
                 let status = res2.status().as_u16();
                 let msg = read_body_text(&mut res2);
@@ -260,7 +260,7 @@ impl TadoClient {
         debug!("GET {} ({} query params)", path, query.len());
         match self.call_get(&url, query, &token) {
             Ok(res) if res.status().as_u16() == 401 => self.retry_after_refresh::<T>(&url, query),
-            Ok(mut res) if res.status().is_success() => read_json_body::<T>(&mut res),
+            Ok(mut res) if res.status().is_success() => read_json_body::<T>(&mut res, path),
             Ok(mut res) => {
                 let status = res.status().as_u16();
                 let msg = read_body_text(&mut res);
@@ -363,9 +363,53 @@ impl TadoClient {
     }
 }
 
-fn read_json_body<T: DeserializeOwned>(res: &mut HttpResponse) -> Result<T, TadoClientError> {
-    let reader = res.body_mut().with_config().limit(JSON_BODY_MAX).reader();
-    serde_json::from_reader(reader).map_err(TadoClientError::Json)
+fn read_json_body<T: DeserializeOwned>(res: &mut HttpResponse, context: &str) -> Result<T, TadoClientError> {
+    // Read the (potentially compressed) body with a hard size limit, then deserialize.
+    // On failure, log detailed error with precise JSON path and full body (except for sensitive endpoints).
+    use std::io::Read as _;
+
+    let mut reader = res.body_mut().with_config().limit(JSON_BODY_MAX).reader();
+    let mut buf = Vec::new();
+    if let Err(e) = reader.read_to_end(&mut buf) {
+        return Err(TadoClientError::Transport(format!("failed to read body: {}", e)));
+    }
+
+    // Use serde_path_to_error to capture the exact path where deserialization fails.
+    let mut de = serde_json::Deserializer::from_slice(&buf);
+    match serde_path_to_error::deserialize::<_, T>(&mut de) {
+        Ok(v) => Ok(v),
+        Err(err) => {
+            let status = res.status().as_u16();
+            let content_type = res
+                .headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("<unknown>");
+            let total_bytes = buf.len();
+            let json_path = err.path().to_string();
+            let inner = err.into_inner();
+
+            // Avoid logging sensitive token bodies if context indicates OAuth/Token.
+            let is_sensitive = {
+                let lc = context.to_ascii_lowercase();
+                lc.contains("oauth") || lc.contains("token") || lc.contains("login.tado.com")
+            };
+            if is_sensitive {
+                error!(
+                    "JSON deserialization failed (context={}, path={}, status={}, content-type={}, bytes={}): {}. Body: <redacted>",
+                    context, json_path, status, content_type, total_bytes, inner
+                );
+            } else {
+                let body_str = String::from_utf8_lossy(&buf);
+                error!(
+                    "JSON deserialization failed (context={}, path={}, status={}, content-type={}, bytes={}): {}. Body: {}",
+                    context, json_path, status, content_type, total_bytes, inner, body_str
+                );
+            }
+
+            Err(TadoClientError::Json(inner))
+        }
+    }
 }
 
 fn read_body_text(res: &mut HttpResponse) -> String {

@@ -84,8 +84,8 @@ pub fn run() -> Result<(), String> {
 }
 
 fn main() {
-    // Init logging early; default to info if RUST_LOG not set
-    let default_filter = env_logger::Env::default().default_filter_or("info");
+    // Init logging early; default to debug if RUST_LOG not set
+    let default_filter = env_logger::Env::default().default_filter_or("debug");
     env_logger::Builder::from_env(default_filter)
         .format_timestamp_secs()
         .init();
