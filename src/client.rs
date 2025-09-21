@@ -243,6 +243,8 @@ impl TadoClient {
             s.token = Some(new_access);
         }
         let token2 = self.get_bearer()?;
+        // Log the retried request at info level so non-auth calls are visible
+        info!("Tado API GET {}{} [after refresh]", url, format_query_params(query));
         match self.call_get(url, query, &token2) {
             Ok(mut res2) if res2.status().is_success() => read_json_body::<T>(&mut res2, url),
             Ok(mut res2) => {
@@ -257,7 +259,8 @@ impl TadoClient {
     fn get_json<T: DeserializeOwned>(&self, path: &str, query: &[(&str, String)]) -> Result<T, TadoClientError> {
         let url = Self::url(path);
         let token = self.get_bearer()?;
-        debug!("GET {} ({} query params)", path, query.len());
+        // Log every non-auth endpoint call at info level
+        info!("Tado API GET {}{}", path, format_query_params(query));
         match self.call_get(&url, query, &token) {
             Ok(res) if res.status().as_u16() == 401 => self.retry_after_refresh::<T>(&url, query),
             Ok(mut res) if res.status().is_success() => read_json_body::<T>(&mut res, path),
@@ -360,6 +363,19 @@ impl TadoClient {
             q.push(("date", d.format("%Y-%m-%d").to_string()));
         }
         self.get_json(&format!("/homes/{}/zones/{}/dayReport", home_id.0, zone_id.0), &q)
+    }
+}
+
+fn format_query_params(query: &[(&str, String)]) -> String {
+    if query.is_empty() {
+        "".to_string()
+    } else {
+        let joined = query
+            .iter()
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect::<Vec<_>>()
+            .join("&");
+        format!("?{}", joined)
     }
 }
 
