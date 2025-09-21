@@ -1,0 +1,477 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "iteration": 1,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "row",
+      "title": "Overview",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1
+    },
+    {
+      "type": "stat",
+      "title": "Outside Temp (°C)",
+      "id": 2,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "group": [],
+          "metricColumn": "none",
+          "rawQuery": true,
+          "rawSql": "SELECT w.time AS time, w.outside_temp_c AS value FROM weather_measurements w WHERE w.home_id = (SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(w.time) AND ('${source:raw}'='__all' OR w.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) ORDER BY 1",
+          "refId": "A",
+          "table": "",
+          "timeColumn": "time",
+          "where": []
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Solar Intensity (%)",
+      "id": 3,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT w.time AS time, w.solar_intensity_pct AS value FROM weather_measurements w WHERE w.home_id = (SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(w.time) AND ('${source:raw}'='__all' OR w.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) ORDER BY 1",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Zone Snapshot (latest)",
+      "id": 4,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "options": {
+        "showHeader": true,
+        "footer": { "enablePagination": true, "fields": "", "reducer": ["count"], "show": false }
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT DISTINCT ON (z.id) z.name AS zone, c.time, round(c.inside_temp_c::numeric,2) AS inside_c, round(c.setpoint_temp_c::numeric,2) AS setpoint_c, round(c.humidity_pct::numeric,1) AS humidity_pct, round(c.heating_power_pct::numeric,0) AS heat_pct FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ($__timeTo() IS NULL OR c.time <= $__timeTo()) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) ORDER BY z.id, c.time DESC",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Data Freshness (per home)",
+      "id": 5,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(h.name, 'Home '||h.tado_home_id) AS home, max(c.time) FILTER (WHERE c.zone_id IS NOT NULL AND c.source='realtime') AS climate_rt, max(w.time) FILTER (WHERE w.source='realtime') AS weather_rt FROM homes h LEFT JOIN climate_measurements c ON c.home_id=h.id LEFT JOIN weather_measurements w ON w.home_id=h.id GROUP BY home ORDER BY home",
+          "refId": "A"
+        }
+      ]
+    },
+
+    { "type": "row", "title": "Indoor Climate", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 }, "id": 10 },
+    {
+      "type": "timeseries",
+      "title": "Temperature vs Setpoint (per zone)",
+      "id": 11,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "fieldConfig": {
+        "defaults": { "unit": "celsius" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name AS metric, avg(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1"
+        },
+        {
+          "refId": "B",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name || ' (setpoint)' AS metric, avg(c.setpoint_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Humidity (%)",
+      "id": 12,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 45 },
+              { "color": "green", "value": 60 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name AS metric, avg(c.humidity_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "state-timeline",
+      "title": "Window Open",
+      "id": 13,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 26 },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name AS metric, max(CASE WHEN c.window_open IS TRUE THEN 1 ELSE 0 END) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1"
+        }
+      ]
+    },
+
+    { "type": "row", "title": "Heating Activity", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 }, "id": 20 },
+    {
+      "type": "timeseries",
+      "title": "Heating Power (%)",
+      "id": 21,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name AS metric, avg(c.heating_power_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Daily Heating Run-Minutes",
+      "id": 22,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 33 },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "WITH per_min AS ( SELECT time_bucket_gapfill('1 minute', c.time) AS minute, z.id AS zone_id, coalesce(avg(c.heating_power_pct),0) AS avg_pct FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.id ) SELECT time_bucket('1 day', minute) AS time, z.name AS metric, sum(avg_pct)/100.0 AS value FROM per_min pm JOIN zones z ON z.id=pm.zone_id GROUP BY 1, z.name ORDER BY time"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Comfort Deviation (°C)",
+      "id": 23,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 41 },
+      "fieldConfig": { "defaults": { "unit": "celsius" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "WITH samples AS ( SELECT time_bucket_gapfill('5 minutes', c.time) AS bucket, z.name AS zone, avg(c.setpoint_temp_c) AS sp, avg(c.inside_temp_c) AS inside FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ) SELECT time_bucket('1 day', bucket) AS time, zone AS metric, avg(GREATEST(coalesce(sp, inside) - inside, 0)) AS value FROM samples GROUP BY 1, zone ORDER BY time"
+        }
+      ]
+    },
+
+    { "type": "row", "title": "Weather", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 49 }, "id": 30 },
+    {
+      "type": "timeseries",
+      "title": "Outside Temperature (°C)",
+      "id": 31,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 50 },
+      "fieldConfig": { "defaults": { "unit": "celsius" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', w.time) AS time, 'outside' AS metric, avg(w.outside_temp_c) AS value FROM weather_measurements w WHERE w.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(w.time) AND ('${source:raw}'='__all' OR w.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Solar Intensity (%)",
+      "id": 32,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 50 },
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', w.time) AS time, 'solar' AS metric, avg(w.solar_intensity_pct) AS value FROM weather_measurements w WHERE w.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(w.time) AND ('${source:raw}'='__all' OR w.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "state-timeline",
+      "title": "Weather State",
+      "id": 33,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 58 },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT w.time AS time, 'weather' AS metric, coalesce(w.weather_state, '<unknown>') AS value FROM weather_measurements w WHERE w.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(w.time) AND ('${source:raw}'='__all' OR w.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) ORDER BY 1"
+        }
+      ]
+    },
+
+    { "type": "row", "title": "Device Health", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 64 }, "id": 40 },
+    {
+      "type": "state-timeline",
+      "title": "Device Connectivity",
+      "id": 41,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 65 },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, coalesce(d.short_serial_no, d.tado_device_id) AS metric, max(CASE WHEN c.connection_up IS TRUE THEN 1 ELSE 0 END) AS value FROM climate_measurements c JOIN devices d ON d.id=c.device_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, metric ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Battery Status (latest per device)",
+      "id": 42,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 73 },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT coalesce(d.short_serial_no, d.tado_device_id) AS device, (SELECT c2.time FROM climate_measurements c2 WHERE c2.device_id=d.id ORDER BY c2.time DESC LIMIT 1) AS last_seen, (SELECT c2.battery_low FROM climate_measurements c2 WHERE c2.device_id=d.id ORDER BY c2.time DESC LIMIT 1) AS battery_low, d.battery_state FROM devices d WHERE d.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY device"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Device Inventory",
+      "id": 43,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 73 },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT coalesce(d.short_serial_no, d.tado_device_id) AS device, d.device_type, d.firmware_version, d.orientation, d.battery_state, d.updated_at FROM devices d WHERE d.home_id=${home} ORDER BY device"
+        }
+      ]
+    },
+
+    { "type": "row", "title": "Events", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 81 }, "id": 50 },
+    {
+      "type": "barchart",
+      "title": "Event Counts (by type)",
+      "id": 51,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 82 },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket(INTERVAL '$__interval', e.time) AS time, e.event_type AS metric, count(*)::float AS value FROM events e WHERE e.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(e.time) GROUP BY 1, e.event_type ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Recent Events",
+      "id": 52,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 82 },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT e.time, coalesce(z.name,'<home>') AS zone, coalesce(d.short_serial_no, d.tado_device_id) AS device, e.event_type, e.payload FROM events e LEFT JOIN zones z ON z.id=e.zone_id LEFT JOIN devices d ON d.id=e.device_id WHERE e.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(e.time) ORDER BY e.time DESC LIMIT 200"
+        }
+      ]
+    },
+
+    { "type": "row", "title": "Diagnostics", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 90 }, "id": 60 },
+    {
+      "type": "barchart",
+      "title": "Source Coverage (climate)",
+      "id": 61,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 91 },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT source AS metric, count(*)::float AS value FROM climate_measurements c WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) GROUP BY source ORDER BY source"
+        }
+      ]
+    },
+    {
+      "type": "state-timeline",
+      "title": "Gap Detection (per zone)",
+      "id": 62,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 91 },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name AS metric, CASE WHEN count(*)>0 THEN 1 ELSE 0 END AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Raw Explorer (climate)",
+      "id": 63,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 99 },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT c.time, z.name AS zone, c.inside_temp_c, c.setpoint_temp_c, c.humidity_pct, c.heating_power_pct, c.window_open, c.source FROM climate_measurements c LEFT JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) ORDER BY c.time DESC LIMIT 2000"
+        }
+      ]
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["tado", "timescale", "heating"],
+  "templating": {
+    "list": [
+      {
+        "name": "ds",
+        "label": "Datasource",
+        "type": "datasource",
+        "query": "postgres",
+        "refresh": 1,
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "current": { "selected": true }
+      },
+      {
+        "name": "home",
+        "label": "Home",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "${ds}" },
+        "refresh": 1,
+        "hide": 0,
+        "allowCustom": false,
+        "query": "SELECT coalesce(name, 'Home '||tado_home_id) AS __text, coalesce(name, 'Home '||tado_home_id) AS __value FROM homes ORDER BY 1",
+        "definition": "SELECT coalesce(name, 'Home '||tado_home_id) AS __text, coalesce(name, 'Home '||tado_home_id) AS __value FROM homes ORDER BY 1",
+        "includeAll": false,
+        "multi": false,
+        "sort": 1,
+        "current": { "selected": false }
+      },
+      {
+        "name": "zones",
+        "label": "Zones",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "${ds}" },
+        "refresh": 1,
+        "hide": 0,
+        "allowCustom": false,
+        "query": "SELECT coalesce(name, 'Zone '||tado_zone_id) AS __text, coalesce(name, 'Zone '||tado_zone_id) AS __value FROM zones WHERE home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY 1",
+        "definition": "SELECT coalesce(name, 'Zone '||tado_zone_id) AS __text, coalesce(name, 'Zone '||tado_zone_id) AS __value FROM zones WHERE home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY 1",
+        "includeAll": true,
+        "multi": true,
+        "current": { "selected": true }
+      },
+      {
+        "name": "device_ids",
+        "label": "Devices",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "${ds}" },
+        "refresh": 1,
+        "hide": 2,
+        "allowCustom": false,
+        "query": "SELECT id AS value, coalesce(short_serial_no, tado_device_id) AS label FROM devices WHERE home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY label",
+        "definition": "SELECT id AS value, coalesce(short_serial_no, tado_device_id) AS label FROM devices WHERE home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY label",
+        "includeAll": true,
+        "multi": true
+      },
+      {
+        "name": "source",
+        "label": "Source",
+        "type": "custom",
+        "refresh": 2,
+        "hide": 0,
+        "allowCustom": false,
+        "query": "realtime,historical",
+        "includeAll": true,
+        "multi": true,
+        "current": { "selected": true, "value": ["realtime", "historical"] }
+      }
+    ]
+  },
+  "time": { "from": "now-30d", "to": "now" },
+  "timepicker": { "refresh_intervals": ["10s", "30s", "1m", "5m", "10m"] },
+  "timezone": "browser",
+  "title": "Tado Heating & Climate",
+  "version": 1,
+  "weekStart": ""
+}
