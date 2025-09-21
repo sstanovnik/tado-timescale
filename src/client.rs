@@ -13,7 +13,7 @@
 
 use crate::models::tado::*;
 use chrono::NaiveDate;
-use log::{debug, info};
+use log::{debug, info, warn};
 use serde::de::DeserializeOwned;
 use std::cell::RefCell;
 use std::time::{Duration, Instant};
@@ -149,6 +149,18 @@ impl TadoClient {
         Self::parse_token_response(resp)
     }
 
+    fn persist_refresh_token(token: &str) {
+        // Best-effort write; never log the token value.
+        if let Err(e) = std::fs::write("token.txt", token) {
+            warn!(
+                "Tado OAuth: failed to persist rotated refresh token to token.txt: {}",
+                e
+            );
+        } else {
+            info!("Tado OAuth: rotated refresh token persisted to token.txt");
+        }
+    }
+
     fn parse_token_response(
         resp: Result<HttpResponse, ureq::Error>,
     ) -> Result<(AccessToken, Option<String>), TadoClientError> {
@@ -195,6 +207,8 @@ impl TadoClient {
             let (new_access, new_refresh) = self.oauth_refresh_grant(&s.refresh_token)?;
             if let Some(r) = new_refresh {
                 s.refresh_token = r;
+                // Persist the rotated refresh token for future runs.
+                Self::persist_refresh_token(&s.refresh_token);
             }
             s.token = Some(new_access);
         }
@@ -223,6 +237,8 @@ impl TadoClient {
             let (new_access, new_refresh) = self.oauth_refresh_grant(&s.refresh_token)?;
             if let Some(r) = new_refresh {
                 s.refresh_token = r;
+                // Persist the rotated refresh token for future runs.
+                Self::persist_refresh_token(&s.refresh_token);
             }
             s.token = Some(new_access);
         }

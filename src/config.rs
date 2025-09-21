@@ -2,6 +2,7 @@
 //! Defaults align with docker-compose (localhost TimescaleDB).
 
 use std::time::Duration;
+use std::{fs, path::Path};
 
 pub const DEFAULT_DATABASE_URL: &str = "postgres://postgres:postgres@localhost:5432/tado";
 pub const DEFAULT_REALTIME_SECS: u64 = 60;
@@ -22,9 +23,21 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Result<Self, String> {
         let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DATABASE_URL.to_string());
-
+        // Prefer env var; fallback to token.txt in working directory
         let tado_refresh_token =
-            std::env::var("TADO_REFRESH_TOKEN").map_err(|_| "Missing TADO_REFRESH_TOKEN in environment".to_string())?;
+            match std::env::var("TADO_REFRESH_TOKEN") {
+                Ok(v) if !v.trim().is_empty() => v,
+                _ => {
+                    let path = Path::new("token.txt");
+                    match fs::read_to_string(path) {
+                        Ok(s) if !s.trim().is_empty() => s.trim().to_string(),
+                        _ => return Err(
+                            "Missing refresh token: set TADO_REFRESH_TOKEN or provide token.txt in working directory"
+                                .to_string(),
+                        ),
+                    }
+                }
+            };
 
         let realtime_secs = std::env::var("REALTIME_INTERVAL_SECS")
             .ok()

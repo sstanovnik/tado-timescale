@@ -6,3 +6,5 @@ target/
 *.csv
 !test.csv
 *.pdf
+
+token.txt
