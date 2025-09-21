@@ -27,9 +27,12 @@ pub fn run() -> Result<(), String> {
     // 1) Load config
     let cfg = Config::from_env()?;
     info!(
-        "Config loaded (realtime_interval={}s, backfill_enabled={})",
+        "Config loaded (realtime_interval={}s, backfill_enabled={}, backfill_from={})",
         cfg.realtime_interval.as_secs(),
-        cfg.backfill_enabled
+        cfg.backfill_enabled,
+        cfg.backfill_from_date
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| "-".to_string())
     );
 
     // 2) Connect DB
@@ -66,7 +69,7 @@ pub fn run() -> Result<(), String> {
     if cfg.backfill_enabled {
         info!("Starting historical backfill for {} home(s)", target_homes.len());
         for home_id in &target_homes {
-            backfill::run_for_home(&mut conn, &client, HomeId(*home_id))?;
+            backfill::run_for_home(&mut conn, &client, HomeId(*home_id), cfg.backfill_from_date)?;
             info!("Backfill completed for home {}", home_id);
         }
     }

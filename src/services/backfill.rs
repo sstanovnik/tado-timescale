@@ -4,14 +4,19 @@ use crate::db::models::{NewClimateMeasurement, NewWeatherMeasurement};
 use crate::models::tado::{self, HomeId, ZoneId};
 use crate::schema;
 use crate::utils::{determine_zone_start_time, serde_enum_name};
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use diesel::dsl::{max, min};
 use diesel::prelude::*;
 use diesel::PgConnection;
 use log::{debug, info};
 use std::collections::BTreeMap;
 
-pub fn run_for_home(conn: &mut PgConnection, client: &TadoClient, home_id: HomeId) -> Result<(), String> {
+pub fn run_for_home(
+    conn: &mut PgConnection,
+    client: &TadoClient,
+    home_id: HomeId,
+    backfill_from_date: Option<NaiveDate>,
+) -> Result<(), String> {
     // Fetch zones to decide backfill per zone
     let zones = client
         .get_zones(home_id)
@@ -27,9 +32,19 @@ pub fn run_for_home(conn: &mut PgConnection, client: &TadoClient, home_id: HomeI
 
     // Map of tado zone id -> db zone id (only those with date_created)
     let mut zone_id_map = BTreeMap::new();
-    // Compute weather backfill window once per home (avoid extra API calls later)
+    // Compute lower bound for historical collection for this home, if requested
+    let min_start_dt_utc: Option<DateTime<Utc>> = backfill_from_date.map(|d| d.and_time(NaiveTime::MIN).and_utc());
+
+    // Compute weather backfill window once per home (avoid extra API calls later),
+    // clamping the start to the configured minimum date when provided.
     let weather_window = select_reference_zone_and_start(&zones)
-        .map(|(_, home_start)| compute_weather_backfill_window(conn, db_home_id, home_start))
+        .map(|(_, home_start)| {
+            let effective_start = match min_start_dt_utc {
+                Some(min_dt) if home_start < min_dt => min_dt,
+                _ => home_start,
+            };
+            compute_weather_backfill_window(conn, db_home_id, effective_start)
+        })
         .transpose()?;
 
     for z in &zones {
@@ -62,6 +77,10 @@ pub fn run_for_home(conn: &mut PgConnection, client: &TadoClient, home_id: HomeI
         };
         let start = determine_zone_start_time(client, home_id, zone_id)
             .map_err(|e| format!("determine start time failed for zone {}: {}", zone_id.0, e))?;
+        let start = match min_start_dt_utc {
+            Some(min_dt) if start < min_dt => min_dt,
+            _ => start,
+        };
         let (from, to) = compute_backfill_window(conn, db_home_id, db_zone_id, start)?;
         if from >= to {
             continue;
@@ -114,7 +133,9 @@ fn compute_backfill_window(
         .first(conn)
         .map_err(|e| format!("query earliest realtime failed: {}", e))?;
 
-    let from = last_hist.map(|t| t + chrono::Duration::seconds(1)).unwrap_or(start);
+    let base_from = last_hist.map(|t| t + chrono::Duration::seconds(1)).unwrap_or(start);
+    // Ensure we never go earlier than the desired start
+    let from = base_from.max(start);
     let to = earliest_realtime.unwrap_or_else(Utc::now);
     Ok((from, to))
 }
@@ -135,7 +156,8 @@ fn compute_weather_backfill_window(
         .select(min(W::time))
         .first(conn)
         .map_err(|e| format!("query earliest weather realtime failed: {}", e))?;
-    let from = last_hist.map(|t| t + chrono::Duration::seconds(1)).unwrap_or(start);
+    let base_from = last_hist.map(|t| t + chrono::Duration::seconds(1)).unwrap_or(start);
+    let from = base_from.max(start);
     let to = earliest_rt.unwrap_or_else(Utc::now);
     Ok((from, to))
 }

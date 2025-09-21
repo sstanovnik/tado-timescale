@@ -31,6 +31,7 @@ Configuration
 - `DATABASE_URL` (default `postgres://postgres:postgres@localhost:5432/tado`)
 - `REALTIME_INTERVAL_SECS` (default `60`)
 - `BACKFILL_ENABLED` (default `true`)
+- `BACKFILL_FROM_DATE` (optional) — limit historical backfill to start at this UTC date (format `YYYY-MM-DD`).
 - `TADO_REFRESH_TOKEN` (required)
  - `TADO_FIREFOX_VERSION` (default `140.0`) — version string in the spoofed User-Agent.
 

@@ -1,6 +1,7 @@
 //! Minimal runtime configuration helpers.
 //! Defaults align with docker-compose (localhost TimescaleDB).
 
+use chrono::NaiveDate;
 use std::time::Duration;
 use std::{fs, path::Path};
 
@@ -18,6 +19,9 @@ pub struct Config {
     pub realtime_interval: Duration,
     /// Allow skipping the historical backfill on startup.
     pub backfill_enabled: bool,
+    /// Optional lower bound for historical backfill (UTC date at 00:00:00).
+    /// When set, the backfill will not request data prior to this date.
+    pub backfill_from_date: Option<NaiveDate>,
 }
 
 impl Config {
@@ -51,12 +55,21 @@ impl Config {
             .map(|s| matches!(s.as_str(), "1" | "true" | "TRUE"))
             .unwrap_or(true);
 
+        let backfill_from_date = match std::env::var("BACKFILL_FROM_DATE") {
+            Ok(s) if !s.trim().is_empty() => Some(
+                NaiveDate::parse_from_str(s.trim(), "%Y-%m-%d")
+                    .map_err(|_| "BACKFILL_FROM_DATE must be in YYYY-MM-DD format".to_string())?,
+            ),
+            _ => None,
+        };
+
         Ok(Config {
             database_url,
             tado_refresh_token,
             tado_firefox_version,
             realtime_interval: Duration::from_secs(realtime_secs),
             backfill_enabled,
+            backfill_from_date,
         })
     }
 }
