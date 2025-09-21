@@ -1268,7 +1268,7 @@ pub struct WeatherSlot {
 pub struct WeatherSlotTimeSeries {
     pub time_series_type: Option<String>,
     pub value_type: Option<String>,
-    pub slots: Option<BTreeMap<String, WeatherSlot>>, // keyed by HH:MM
+    pub slots: Option<BTreeMap<String, Option<WeatherSlot>>>, // keyed by HH:MM
 }
 
 // Zone and related
@@ -1529,4 +1529,24 @@ pub struct ZoneState {
 #[serde(rename_all = "camelCase")]
 pub struct ZoneStates {
     pub zone_states: Option<BTreeMap<String, ZoneState>>, // keyed by zone id string
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn day_report_deserializes_from_sample() {
+        let path = std::path::Path::new("tests/data/day-report.json");
+        let json = std::fs::read_to_string(path).expect("read day-report fixture");
+
+        // Ensure the JSON is valid and then deserialize into DayReport
+        let _v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        let report: DayReport = serde_json::from_str(&json).expect("deserialize DayReport");
+
+        // A couple of light sanity checks for shape
+        assert_eq!(report.zone_type, Some(ZoneType::Heating));
+        assert_eq!(report.hours_in_day, Some(24));
+        assert!(report.measured_data.is_some());
+    }
 }
