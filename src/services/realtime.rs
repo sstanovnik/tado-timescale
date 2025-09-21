@@ -104,7 +104,7 @@ fn collect_home(
             .weather_state
             .as_ref()
             .and_then(|ws| ws.value.as_ref())
-            .and_then(|v| serde_enum_name(v));
+            .and_then(serde_enum_name);
 
         let row = NewWeatherMeasurement {
             time: ts,
@@ -190,7 +190,7 @@ fn collect_home(
         let ac_mode = state
             .setting
             .as_ref()
-            .and_then(|set| set.mode.as_ref().and_then(|m| serde_enum_name(m)));
+            .and_then(|set| set.mode.as_ref().and_then(serde_enum_name));
 
         let row = NewClimateMeasurement {
             time: ts,

@@ -93,7 +93,7 @@ fn upsert_home(conn: &mut PgConnection, home: &tado::Home) -> Result<i64, String
         tado_home_id,
         name,
         timezone: home.date_time_zone.clone(),
-        temperature_unit: home.temperature_unit.as_ref().and_then(|u| serde_enum_name(u)),
+        temperature_unit: home.temperature_unit.as_ref().and_then(serde_enum_name),
         address_line1: home.details.address.as_ref().and_then(|a| a.address_line1.clone()),
         address_line2: home.details.address.as_ref().and_then(|a| a.address_line2.clone()),
         zip_code: home.details.address.as_ref().and_then(|a| a.zip_code.clone()),
@@ -118,8 +118,8 @@ fn upsert_home(conn: &mut PgConnection, home: &tado::Home) -> Result<i64, String
             H::city.eq(new_row.city.clone()),
             H::state.eq(new_row.state.clone()),
             H::country.eq(new_row.country.clone()),
-            H::latitude.eq(new_row.latitude.clone()),
-            H::longitude.eq(new_row.longitude.clone()),
+            H::latitude.eq(new_row.latitude),
+            H::longitude.eq(new_row.longitude),
             H::updated_at.eq(Utc::now()),
         ))
         .execute(conn)
@@ -161,7 +161,7 @@ fn upsert_zones(conn: &mut PgConnection, db_home_id: i64, zones: &[tado::Zone]) 
             home_id: db_home_id,
             tado_zone_id,
             name: z.name.clone(),
-            zone_type: z.r#type.as_ref().and_then(|t| serde_enum_name(t)),
+            zone_type: z.r#type.as_ref().and_then(serde_enum_name),
             date_created: z.date_created,
         };
         diesel::insert_into(Z::zones)
@@ -207,8 +207,8 @@ fn upsert_devices(
             short_serial_no: d.short_serial_no.clone(),
             device_type: d.device_type.as_ref().map(|t| t.0.clone()),
             firmware_version: d.current_fw_version.clone(),
-            orientation: d.orientation.as_ref().and_then(|o| serde_enum_name(o)),
-            battery_state: d.battery_state.as_ref().and_then(|b| serde_enum_name(b)),
+            orientation: d.orientation.as_ref().and_then(serde_enum_name),
+            battery_state: d.battery_state.as_ref().and_then(serde_enum_name),
             characteristics: serde_json::to_value(&d.characteristics).ok(),
         };
         diesel::insert_into(D::devices)

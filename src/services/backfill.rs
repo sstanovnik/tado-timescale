@@ -1,6 +1,6 @@
 use crate::client::TadoClient;
 use crate::db::models::event_source;
-use crate::db::models::NewClimateMeasurement;
+use crate::db::models::{NewClimateMeasurement, NewWeatherMeasurement};
 use crate::models::tado::{self, HomeId, ZoneId};
 use crate::schema;
 use crate::utils::{determine_zone_start_time, serde_enum_name};
@@ -27,6 +27,11 @@ pub fn run_for_home(conn: &mut PgConnection, client: &TadoClient, home_id: HomeI
 
     // Map of tado zone id -> db zone id (only those with date_created)
     let mut zone_id_map = BTreeMap::new();
+    // Compute weather backfill window once per home (avoid extra API calls later)
+    let weather_window = select_reference_zone_and_start(&zones)
+        .map(|(_, home_start)| compute_weather_backfill_window(conn, db_home_id, home_start))
+        .transpose()?;
+
     for z in &zones {
         if let (Some(zid), Some(_)) = (z.id, z.date_created) {
             let db_zone_id: i64 = schema::zones::dsl::zones
@@ -65,7 +70,17 @@ pub fn run_for_home(conn: &mut PgConnection, client: &TadoClient, home_id: HomeI
             "Backfill: home {} zone {} from {} to {}",
             home_id.0, zone_id.0, from, to
         );
-        backfill_zone_range(conn, client, home_id, db_home_id, zone_id, db_zone_id, from, to)?;
+        backfill_zone_range(
+            conn,
+            client,
+            home_id,
+            db_home_id,
+            zone_id,
+            db_zone_id,
+            weather_window,
+            from,
+            to,
+        )?;
     }
 
     Ok(())
@@ -104,6 +119,43 @@ fn compute_backfill_window(
     Ok((from, to))
 }
 
+fn compute_weather_backfill_window(
+    conn: &mut PgConnection,
+    db_home_id: i64,
+    start: DateTime<Utc>,
+) -> Result<(DateTime<Utc>, DateTime<Utc>), String> {
+    use schema::weather_measurements::dsl as W;
+    let last_hist: Option<DateTime<Utc>> = W::weather_measurements
+        .filter(W::home_id.eq(db_home_id).and(W::source.eq(event_source::HISTORICAL)))
+        .select(max(W::time))
+        .first(conn)
+        .map_err(|e| format!("query last weather historical failed: {}", e))?;
+    let earliest_rt: Option<DateTime<Utc>> = W::weather_measurements
+        .filter(W::home_id.eq(db_home_id).and(W::source.eq(event_source::REALTIME)))
+        .select(min(W::time))
+        .first(conn)
+        .map_err(|e| format!("query earliest weather realtime failed: {}", e))?;
+    let from = last_hist.map(|t| t + chrono::Duration::seconds(1)).unwrap_or(start);
+    let to = earliest_rt.unwrap_or_else(Utc::now);
+    Ok((from, to))
+}
+
+fn select_reference_zone_and_start(zones: &[tado::Zone]) -> Option<(ZoneId, DateTime<Utc>)> {
+    // Choose the zone with the earliest creation date as reference; ensures widest history.
+    let mut best: Option<(ZoneId, DateTime<Utc>)> = None;
+    for z in zones {
+        if let (Some(zid), Some(created)) = (z.id, z.date_created) {
+            match best {
+                None => best = Some((zid, created)),
+                Some((_, best_created)) if created < best_created => best = Some((zid, created)),
+                _ => {}
+            }
+        }
+    }
+    best
+}
+
+#[allow(clippy::too_many_arguments)]
 fn backfill_zone_range(
     conn: &mut PgConnection,
     client: &TadoClient,
@@ -111,10 +163,12 @@ fn backfill_zone_range(
     db_home_id: i64,
     zone_id: ZoneId,
     db_zone_id: i64,
+    weather_window: Option<(DateTime<Utc>, DateTime<Utc>)>,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
 ) -> Result<(), String> {
     use schema::climate_measurements::dsl as C;
+    use schema::weather_measurements::dsl as W;
 
     // Iterate by day using local UTC date boundaries
     let mut cursor = from.date_naive();
@@ -134,6 +188,7 @@ fn backfill_zone_range(
             })?;
 
         let mut by_ts: BTreeMap<DateTime<Utc>, NewClimateMeasurement> = BTreeMap::new();
+        let mut weather_by_ts: BTreeMap<DateTime<Utc>, NewWeatherMeasurement> = BTreeMap::new();
 
         if let Some(md) = report.measured_data.clone() {
             if let Some(temp_series) = md.inside_temperature.and_then(|s| s.data_points) {
@@ -210,7 +265,7 @@ fn backfill_zone_range(
                     }
                     if let Some(val) = di.value {
                         let setpoint = val.temperature.and_then(|t| t.celsius);
-                        let ac_mode = val.mode.as_ref().and_then(|m| serde_enum_name(m));
+                        let ac_mode = val.mode.as_ref().and_then(serde_enum_name);
                         let ac_on = val.power.map(|p| matches!(p, tado::Power::On));
                         let entry = by_ts.entry(ts).or_insert_with(|| new_row(ts, db_home_id, db_zone_id));
                         if let Some(sp) = setpoint {
@@ -221,6 +276,31 @@ fn backfill_zone_range(
                         }
                         if let Some(on) = ac_on {
                             entry.ac_power_on = Some(on);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Weather (home-scoped) piggybacked from the same day report to avoid extra API calls
+        if let Some((w_from, w_to)) = weather_window
+            && let Some(w) = report.weather
+            && let Some(cond) = w.condition.and_then(|ts| ts.data_intervals)
+        {
+            for di in cond {
+                if let Some(ts) = di.interval.from {
+                    if ts < w_from || ts >= w_to {
+                        continue;
+                    }
+                    let entry = weather_by_ts
+                        .entry(ts)
+                        .or_insert_with(|| new_weather_row(ts, db_home_id));
+                    if let Some(v) = di.value {
+                        if let Some(temp) = v.temperature.and_then(|t| t.celsius) {
+                            entry.outside_temp_c = Some(temp);
+                        }
+                        if let Some(state) = v.state.as_ref().and_then(serde_enum_name) {
+                            entry.weather_state = Some(state);
                         }
                     }
                 }
@@ -238,7 +318,18 @@ fn backfill_zone_range(
             inserted_total += inserted as usize;
         }
 
-        cursor = cursor.succ_opt().unwrap_or_else(|| NaiveDate::MAX);
+        // Insert weather rows for this day (deduped by (home_id, time, source))
+        if !weather_by_ts.is_empty() {
+            let rows: Vec<NewWeatherMeasurement> = weather_by_ts.into_values().collect();
+            let _ = diesel::insert_into(W::weather_measurements)
+                .values(&rows)
+                .on_conflict((W::home_id, W::time, W::source))
+                .do_nothing()
+                .execute(conn)
+                .map_err(|e| format!("insert historical weather rows failed: {}", e))?;
+        }
+
+        cursor = cursor.succ_opt().unwrap_or(NaiveDate::MAX);
     }
 
     info!(
@@ -265,5 +356,16 @@ fn new_row(ts: DateTime<Utc>, db_home_id: i64, db_zone_id: i64) -> NewClimateMea
         window_open: None,
         battery_low: None,
         connection_up: None,
+    }
+}
+
+fn new_weather_row(ts: DateTime<Utc>, db_home_id: i64) -> NewWeatherMeasurement {
+    NewWeatherMeasurement {
+        time: ts,
+        home_id: db_home_id,
+        source: event_source::HISTORICAL.to_string(),
+        outside_temp_c: None,
+        solar_intensity_pct: None,
+        weather_state: None,
     }
 }
