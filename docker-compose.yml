@@ -23,5 +23,8 @@ services:
     image: grafana/grafana-oss:12.2.0-17142428006
     ports:
       - "3000:3000"
+    environment:
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
     volumes:
       - grafana-storage:/var/lib/grafana
+      - ./grafana:/etc/grafana/provisioning:ro
