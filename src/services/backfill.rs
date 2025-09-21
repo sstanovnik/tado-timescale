@@ -234,7 +234,8 @@ fn backfill_zone_range(
                             continue;
                         }
                         let entry = by_ts.entry(ts).or_insert_with(|| new_row(ts, db_home_id, db_zone_id));
-                        entry.humidity_pct = Some(val);
+                        // Historical humidity uses UNIT_INTERVAL (0.0..1.0) — convert to percentage.
+                        entry.humidity_pct = Some(val * 100.0);
                     }
                 }
             }
