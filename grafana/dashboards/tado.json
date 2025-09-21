@@ -20,7 +20,7 @@
       "title": "Outside Temp (°C)",
       "id": 2,
       "datasource": { "type": "postgres", "uid": "${ds}" },
-      "gridPos": { "h": 3, "w": 12, "x": 0, "y": 1 },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "orientation": "auto",
@@ -47,7 +47,7 @@
       "title": "Solar Intensity (%)",
       "id": 3,
       "datasource": { "type": "postgres", "uid": "${ds}" },
-      "gridPos": { "h": 3, "w": 12, "x": 12, "y": 1 },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "orientation": "auto",
@@ -65,13 +65,12 @@
         }
       ]
     },
-    { "type": "row", "title": "Summary Tables", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 91 }, "id": 70 },
     {
       "type": "table",
       "title": "Zone Snapshot (latest)",
       "id": 4,
       "datasource": { "type": "postgres", "uid": "${ds}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 92 },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
       "options": {
         "showHeader": true,
         "footer": { "enablePagination": true, "fields": "", "reducer": ["count"], "show": false }
@@ -90,7 +89,7 @@
       "title": "Data Freshness (per home)",
       "id": 5,
       "datasource": { "type": "postgres", "uid": "${ds}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 92 },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
       "options": { "showHeader": true },
       "targets": [
         {
@@ -116,7 +115,7 @@
             "drawStyle": "line",
             "lineInterpolation": "smooth",
             "lineWidth": 2,
-            "fillOpacity": 12,
+            "fillOpacity": 0,
             "showPoints": "never",
             "spanNulls": true
           }
@@ -155,7 +154,7 @@
             "drawStyle": "line",
             "lineInterpolation": "smooth",
             "lineWidth": 2,
-            "fillOpacity": 10,
+            "fillOpacity": 0,
             "showPoints": "never",
             "spanNulls": true
           },
@@ -202,7 +201,7 @@
           "refId": "A",
           "rawQuery": true,
           "format": "time_series",
-          "rawSql": "SELECT time_bucket_gapfill('1 minute', c.time) AS time, z.name AS metric, coalesce(max(CASE WHEN c.window_open IS TRUE THEN 1 ELSE 0 END),0) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1"
+          "rawSql": "SELECT time_bucket_gapfill('1 minute', c.time) AS time, z.name AS metric, locf(max(CASE WHEN c.window_open IS TRUE THEN 1 ELSE 0 END)::int) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1"
         }
       ]
     },
@@ -221,7 +220,7 @@
             "drawStyle": "line",
             "lineInterpolation": "smooth",
             "lineWidth": 2,
-            "fillOpacity": 10,
+            "fillOpacity": 0,
             "showPoints": "never",
             "spanNulls": true
           }
@@ -266,7 +265,7 @@
             "drawStyle": "line",
             "lineInterpolation": "smooth",
             "lineWidth": 2,
-            "fillOpacity": 8,
+            "fillOpacity": 0,
             "showPoints": "never",
             "spanNulls": true
           }
@@ -298,7 +297,7 @@
             "drawStyle": "line",
             "lineInterpolation": "smooth",
             "lineWidth": 2,
-            "fillOpacity": 8,
+            "fillOpacity": 0,
             "showPoints": "never",
             "spanNulls": true
           }
@@ -328,7 +327,7 @@
             "drawStyle": "line",
             "lineInterpolation": "smooth",
             "lineWidth": 2,
-            "fillOpacity": 8,
+            "fillOpacity": 0,
             "showPoints": "never",
             "spanNulls": true
           }
@@ -355,7 +354,7 @@
         "defaults": {
           "color": { "mode": "palette-classic" },
           "mappings": [
-            { "type": "value", "options": { "Sunny": { "color": "#f2cc0c" }, "Clear": { "color": "#f2cc0c" }, "Partly Cloudy": { "color": "#73bf69" }, "Cloudy": { "color": "#5794f2" }, "Rain": { "color": "#3274d9" }, "Snow": { "color": "#e0e0e0" }, "Fog": { "color": "#a8a8a8" }, "Thunderstorm": { "color": "#e02f44" } } }
+            { "type": "value", "options": { "SUN": { "color": "#f2cc0c" }, "CLOUDY_PARTLY": { "color": "#73bf69" }, "CLOUDY": { "color": "#5794f2" }, "RAIN": { "color": "#3274d9" }, "SNOW": { "color": "#e0e0e0" }, "FOG": { "color": "#a8a8a8" }, "THUNDERSTORM": { "color": "#e02f44" } } }
           ]
         },
         "overrides": [
@@ -386,7 +385,7 @@
           "refId": "A",
           "rawQuery": true,
           "format": "time_series",
-          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, coalesce(d.short_serial_no, d.tado_device_id) AS metric, max(CASE WHEN c.connection_up IS TRUE THEN 1 ELSE 0 END) AS value FROM climate_measurements c JOIN devices d ON d.id=c.device_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND c.source = 'realtime' AND $__timeFilter(c.time) GROUP BY 1, metric ORDER BY 1"
+          "rawSql": "SELECT time_bucket_gapfill('1 minute', c.time) AS time, coalesce(d.short_serial_no, d.tado_device_id) AS metric, locf(max(CASE WHEN c.connection_up IS TRUE THEN 1 ELSE 0 END)::int) AS value FROM climate_measurements c JOIN devices d ON d.id=c.device_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND c.source = 'realtime' AND $__timeFilter(c.time) GROUP BY 1, metric ORDER BY 1"
         }
       ]
     },
@@ -396,6 +395,18 @@
       "id": 42,
       "datasource": { "type": "postgres", "uid": "${ds}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 73 },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Battery Low" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "color-background" },
+              { "id": "mappings", "value": [ { "type": "value", "options": { "true": { "color": "red", "index": 0, "text": "true" }, "false": { "color": "green", "index": 1, "text": "false" } } } ] }
+            ]
+          }
+        ]
+      },
       "targets": [
         {
           "refId": "A",
