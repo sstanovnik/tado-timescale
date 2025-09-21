@@ -70,3 +70,28 @@ pub fn determine_zone_start_time(
 pub fn serde_enum_name<T: Serialize>(val: &T) -> Option<String> {
     serde_json::to_value(val).ok()?.as_str().map(|s| s.to_string())
 }
+
+/// Map Tado device type codes to human-friendly descriptions.
+///
+/// Source: known values documented in `tado-openapi.yml` under `components/schemas/DeviceType`.
+pub fn describe_device_type(code: &str) -> Option<&'static str> {
+    match code {
+        "GW01" => Some("Gateway V1"),
+        "GW02" => Some("Bridge V2"),
+        "IB01" => Some("Internet Bridge V3+"),
+        "BX02" => Some("Box V1"),
+        "BU01" => Some("Extension Kit UK"),
+        "EK01" => Some("Extension Kit UK"),
+        "BR02" => Some("Wireless Receiver V3+"),
+        "BP02" => Some("Wireless Receiver UK V3+"),
+        "RU01" => Some("Smart Thermostat V3"),
+        "RU02" => Some("Wired Smart Thermostat V3+"),
+        "TS02" => Some("Temp Sensor V1"),
+        "SU02" => Some("Wireless Temperature Sensor V3+"),
+        "VA01" => Some("Smart Radiator Thermostat V3"),
+        "VA02" => Some("Smart Radiator Thermostat V3+"),
+        "WR01" => Some("Smart AC Control V3"),
+        "WR02" => Some("Smart AC Control V3+"),
+        _ => None,
+    }
+}

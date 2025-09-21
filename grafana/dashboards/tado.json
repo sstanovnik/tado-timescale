@@ -385,7 +385,7 @@
           "refId": "A",
           "rawQuery": true,
           "format": "time_series",
-          "rawSql": "SELECT time_bucket_gapfill('1 minute', c.time) AS time, coalesce(d.short_serial_no, d.tado_device_id) AS metric, locf(max(CASE WHEN c.connection_up IS TRUE THEN 1 ELSE 0 END)::int) AS value FROM climate_measurements c JOIN devices d ON d.id=c.device_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND c.source = 'realtime' AND $__timeFilter(c.time) GROUP BY 1, metric ORDER BY 1"
+          "rawSql": "SELECT time_bucket_gapfill('1 minute', c.time) AS time, coalesce(d.short_serial_no, d.tado_device_id) || ' [' || coalesce(d.device_type_desc, d.device_type, 'Unknown') || ']' AS metric, locf(max(CASE WHEN c.connection_up IS TRUE THEN 1 ELSE 0 END)::int) AS value FROM climate_measurements c JOIN devices d ON d.id=c.device_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND c.source = 'realtime' AND $__timeFilter(c.time) GROUP BY 1, metric ORDER BY 1"
         }
       ]
     },
@@ -412,7 +412,7 @@
           "refId": "A",
           "rawQuery": true,
           "format": "table",
-          "rawSql": "SELECT coalesce(d.short_serial_no, d.tado_device_id) AS \"Device\", (SELECT c2.time FROM climate_measurements c2 WHERE c2.device_id=d.id ORDER BY c2.time DESC LIMIT 1) AS \"Last Seen\", (SELECT c2.battery_low FROM climate_measurements c2 WHERE c2.device_id=d.id ORDER BY c2.time DESC LIMIT 1) AS \"Battery Low\", d.battery_state AS \"Battery State\" FROM devices d WHERE d.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY \"Device\""
+          "rawSql": "SELECT coalesce(d.short_serial_no, d.tado_device_id) || ' [' || coalesce(d.device_type_desc, d.device_type, 'Unknown') || ']' AS \"Device\", (SELECT c2.time FROM climate_measurements c2 WHERE c2.device_id=d.id ORDER BY c2.time DESC LIMIT 1) AS \"Last Seen\", (SELECT c2.battery_low FROM climate_measurements c2 WHERE c2.device_id=d.id ORDER BY c2.time DESC LIMIT 1) AS \"Battery Low\", d.battery_state AS \"Battery State\" FROM devices d WHERE d.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY \"Device\""
         }
       ]
     },
@@ -427,7 +427,7 @@
           "refId": "A",
           "rawQuery": true,
           "format": "table",
-          "rawSql": "SELECT coalesce(d.short_serial_no, d.tado_device_id) AS \"Device\", d.device_type AS \"Type\", d.firmware_version AS \"Firmware\", d.orientation AS \"Orientation\", d.battery_state AS \"Battery State\", d.updated_at AS \"Updated At\" FROM devices d WHERE d.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY \"Device\""
+          "rawSql": "SELECT coalesce(d.short_serial_no, d.tado_device_id) || ' [' || coalesce(d.device_type_desc, d.device_type, 'Unknown') || ']' AS \"Device\", d.device_type AS \"Type\", d.device_type_desc AS \"Type Description\", d.firmware_version AS \"Firmware\", d.orientation AS \"Orientation\", d.battery_state AS \"Battery State\", d.updated_at AS \"Updated At\" FROM devices d WHERE d.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY \"Device\""
         }
       ]
     },
@@ -459,7 +459,7 @@
           "refId": "A",
           "rawQuery": true,
           "format": "table",
-          "rawSql": "SELECT e.time AS \"Time\", coalesce(z.name,'<home>') AS \"Zone\", coalesce(d.short_serial_no, d.tado_device_id) AS \"Device\", e.event_type AS \"Type\", e.payload AS \"Payload\" FROM events e LEFT JOIN zones z ON z.id=e.zone_id LEFT JOIN devices d ON d.id=e.device_id WHERE e.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(e.time) ORDER BY e.time DESC LIMIT 200"
+          "rawSql": "SELECT e.time AS \"Time\", coalesce(z.name,'<home>') AS \"Zone\", coalesce(d.short_serial_no, d.tado_device_id) || ' [' || coalesce(d.device_type_desc, d.device_type, 'Unknown') || ']' AS \"Device\", e.event_type AS \"Type\", e.payload AS \"Payload\" FROM events e LEFT JOIN zones z ON z.id=e.zone_id LEFT JOIN devices d ON d.id=e.device_id WHERE e.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(e.time) ORDER BY e.time DESC LIMIT 200"
         }
       ]
     }
@@ -518,8 +518,8 @@
         "refresh": 1,
         "hide": 2,
         "allowCustom": false,
-        "query": "SELECT id AS value, coalesce(short_serial_no, tado_device_id) AS label FROM devices WHERE home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY label",
-        "definition": "SELECT id AS value, coalesce(short_serial_no, tado_device_id) AS label FROM devices WHERE home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY label",
+        "query": "SELECT id AS value, coalesce(short_serial_no, tado_device_id) || ' [' || coalesce(device_type_desc, device_type, 'Unknown') || ']' AS label FROM devices WHERE home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY label",
+        "definition": "SELECT id AS value, coalesce(short_serial_no, tado_device_id) || ' [' || coalesce(device_type_desc, device_type, 'Unknown') || ']' AS label FROM devices WHERE home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY label",
         "includeAll": true,
         "multi": true
       },

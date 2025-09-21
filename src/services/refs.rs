@@ -2,7 +2,7 @@ use crate::client::TadoClient;
 use crate::db::models as dbm;
 use crate::models::tado;
 use crate::schema;
-use crate::utils::serde_enum_name;
+use crate::utils::{describe_device_type, serde_enum_name};
 use chrono::Utc;
 use diesel::prelude::*;
 use diesel::PgConnection;
@@ -206,6 +206,10 @@ fn upsert_devices(
             tado_device_id: tado_device_id.clone(),
             short_serial_no: d.short_serial_no.clone(),
             device_type: d.device_type.as_ref().map(|t| t.0.clone()),
+            device_type_desc: d
+                .device_type
+                .as_ref()
+                .and_then(|t| describe_device_type(&t.0).map(|s| s.to_string())),
             firmware_version: d.current_fw_version.clone(),
             orientation: d.orientation.as_ref().and_then(serde_enum_name),
             battery_state: d.battery_state.as_ref().and_then(serde_enum_name),
@@ -218,6 +222,7 @@ fn upsert_devices(
             .set((
                 D::short_serial_no.eq(new_row.short_serial_no.clone()),
                 D::device_type.eq(new_row.device_type.clone()),
+                D::device_type_desc.eq(new_row.device_type_desc.clone()),
                 D::firmware_version.eq(new_row.firmware_version.clone()),
                 D::orientation.eq(new_row.orientation.clone()),
                 D::battery_state.eq(new_row.battery_state.clone()),
@@ -229,6 +234,7 @@ fn upsert_devices(
 
         let row: dbm::Device = D::devices
             .filter(D::home_id.eq(db_home_id).and(D::tado_device_id.eq(&tado_device_id)))
+            .select(dbm::Device::as_select())
             .first(conn)
             .map_err(|e| format!("fetch device failed: {}", e))?;
         map.insert(tado_device_id, row.id);

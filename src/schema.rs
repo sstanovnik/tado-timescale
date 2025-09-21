@@ -33,6 +33,7 @@ diesel::table! {
         characteristics -> Nullable<Jsonb>,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
+        device_type_desc -> Nullable<Text>,
     }
 }
 
