@@ -13,7 +13,7 @@ pub struct Config {
     pub database_url: String,
     /// Initial Tado OAuth refresh token obtained via browser login.
     pub tado_refresh_token: String,
-    /// Firefox version to spoof in the User-Agent (e.g. "140.0").
+    /// Firefox version to spoof in the User-Agent (e.g. "143.0").
     pub tado_firefox_version: String,
     /// Realtime polling cadence.
     pub realtime_interval: Duration,
@@ -48,7 +48,7 @@ impl Config {
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(DEFAULT_REALTIME_SECS);
 
-        let tado_firefox_version = std::env::var("TADO_FIREFOX_VERSION").unwrap_or_else(|_| "140.0".to_string());
+        let tado_firefox_version = std::env::var("TADO_FIREFOX_VERSION").unwrap_or_else(|_| "143.0".to_string());
 
         let backfill_enabled = std::env::var("BACKFILL_ENABLED")
             .ok()

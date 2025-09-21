@@ -33,7 +33,7 @@ Configuration
 - `BACKFILL_ENABLED` (default `true`)
 - `BACKFILL_FROM_DATE` (optional) — limit historical backfill to start at this UTC date (format `YYYY-MM-DD`).
 - `TADO_REFRESH_TOKEN` (required)
- - `TADO_FIREFOX_VERSION` (default `140.0`) — version string in the spoofed User-Agent.
+ - `TADO_FIREFOX_VERSION` (default `143.0`) — version string in the spoofed User-Agent.
 
 Build & Run
 -----------
