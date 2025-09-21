@@ -1,5 +1,6 @@
 volumes:
   tsdb_data:
+  grafana-storage:
 
 services:
   db:
@@ -17,3 +18,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+
+  grafana:
+    image: grafana/grafana-oss:12.2.0-17142428006
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-storage:/var/lib/grafana
