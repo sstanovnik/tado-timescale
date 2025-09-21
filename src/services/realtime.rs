@@ -46,10 +46,7 @@ pub fn run_loop(
             .select((Z::tado_zone_id, Z::id))
             .load(conn)
             .map_err(|e| format!("fetch zone map failed: {}", e))?;
-        let mut zmap = BTreeMap::new();
-        for (tado_zone_id, db_zone_id) in rows {
-            zmap.insert(tado_zone_id, db_zone_id);
-        }
+        let zmap: BTreeMap<i64, i64> = rows.into_iter().collect();
         zone_maps.insert(*home_id, zmap);
     }
 
@@ -61,8 +58,9 @@ pub fn run_loop(
                 Some(id) => id,
                 None => continue,
             };
-            let empty: BTreeMap<i64, i64> = BTreeMap::new();
-            let zone_map = zone_maps.get(home_id).unwrap_or(&empty);
+            let Some(zone_map) = zone_maps.get(home_id) else {
+                continue;
+            };
             let zones = client
                 .get_zones(HomeId(*home_id))
                 .map_err(|e| format!("get_zones({home_id}) failed: {}", e))?;

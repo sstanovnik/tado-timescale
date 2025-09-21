@@ -190,10 +190,13 @@ fn backfill_zone_range(
         let mut by_ts: BTreeMap<DateTime<Utc>, NewClimateMeasurement> = BTreeMap::new();
         let mut weather_by_ts: BTreeMap<DateTime<Utc>, NewWeatherMeasurement> = BTreeMap::new();
 
-        if let Some(md) = report.measured_data.clone() {
-            if let Some(temp_series) = md.inside_temperature.and_then(|s| s.data_points) {
+        if let Some(md) = report.measured_data.as_ref() {
+            if let Some(temp_series) = md.inside_temperature.as_ref().and_then(|s| s.data_points.as_ref()) {
                 for dp in temp_series {
-                    if let (Some(ts), Some(val)) = (dp.timestamp, dp.value.and_then(|t| t.celsius)) {
+                    if let (Some(ts), Some(val)) = (
+                        dp.timestamp.as_ref().cloned(),
+                        dp.value.as_ref().and_then(|t| t.celsius),
+                    ) {
                         if ts < from || ts >= to {
                             continue;
                         }
@@ -202,9 +205,9 @@ fn backfill_zone_range(
                     }
                 }
             }
-            if let Some(h_series) = md.humidity.and_then(|s| s.data_points) {
+            if let Some(h_series) = md.humidity.as_ref().and_then(|s| s.data_points.as_ref()) {
                 for dp in h_series {
-                    if let (Some(ts), Some(val)) = (dp.timestamp, dp.value) {
+                    if let (Some(ts), Some(val)) = (dp.timestamp.as_ref().cloned(), dp.value) {
                         if ts < from || ts >= to {
                             continue;
                         }
@@ -213,9 +216,13 @@ fn backfill_zone_range(
                     }
                 }
             }
-            if let Some(conn_series) = md.measuring_device_connected.and_then(|s| s.data_intervals) {
+            if let Some(conn_series) = md
+                .measuring_device_connected
+                .as_ref()
+                .and_then(|s| s.data_intervals.as_ref())
+            {
                 for di in conn_series {
-                    if let (Some(ts), Some(val)) = (di.interval.from, di.value) {
+                    if let (Some(ts), Some(val)) = (di.interval.from.as_ref().cloned(), di.value) {
                         if ts < from || ts >= to {
                             continue;
                         }
@@ -226,9 +233,9 @@ fn backfill_zone_range(
             }
         }
 
-        if let Some(cf) = report.call_for_heat.and_then(|s| s.data_intervals) {
+        if let Some(cf) = report.call_for_heat.as_ref().and_then(|s| s.data_intervals.as_ref()) {
             for di in cf {
-                if let (Some(ts), Some(val)) = (di.interval.from, di.value) {
+                if let (Some(ts), Some(val)) = (di.interval.from.as_ref().cloned(), di.value) {
                     if ts < from || ts >= to {
                         continue;
                     }
@@ -244,9 +251,9 @@ fn backfill_zone_range(
             }
         }
 
-        if let Some(ac) = report.ac_activity.and_then(|s| s.data_intervals) {
+        if let Some(ac) = report.ac_activity.as_ref().and_then(|s| s.data_intervals.as_ref()) {
             for di in ac {
-                if let (Some(ts), Some(val)) = (di.interval.from, di.value) {
+                if let (Some(ts), Some(val)) = (di.interval.from.as_ref().cloned(), di.value) {
                     if ts < from || ts >= to {
                         continue;
                     }
@@ -257,14 +264,14 @@ fn backfill_zone_range(
             }
         }
 
-        if let Some(settings) = report.settings.and_then(|s| s.data_intervals) {
+        if let Some(settings) = report.settings.as_ref().and_then(|s| s.data_intervals.as_ref()) {
             for di in settings {
-                if let Some(ts) = di.interval.from {
+                if let Some(ts) = di.interval.from.as_ref().cloned() {
                     if ts < from || ts >= to {
                         continue;
                     }
-                    if let Some(val) = di.value {
-                        let setpoint = val.temperature.and_then(|t| t.celsius);
+                    if let Some(val) = di.value.as_ref() {
+                        let setpoint = val.temperature.as_ref().and_then(|t| t.celsius);
                         let ac_mode = val.mode.as_ref().and_then(serde_enum_name);
                         let ac_on = val.power.map(|p| matches!(p, tado::Power::On));
                         let entry = by_ts.entry(ts).or_insert_with(|| new_row(ts, db_home_id, db_zone_id));
@@ -284,19 +291,19 @@ fn backfill_zone_range(
 
         // Weather (home-scoped) piggybacked from the same day report to avoid extra API calls
         if let Some((w_from, w_to)) = weather_window
-            && let Some(w) = report.weather
-            && let Some(cond) = w.condition.and_then(|ts| ts.data_intervals)
+            && let Some(w) = report.weather.as_ref()
+            && let Some(cond) = w.condition.as_ref().and_then(|ts| ts.data_intervals.as_ref())
         {
             for di in cond {
-                if let Some(ts) = di.interval.from {
+                if let Some(ts) = di.interval.from.as_ref().cloned() {
                     if ts < w_from || ts >= w_to {
                         continue;
                     }
                     let entry = weather_by_ts
                         .entry(ts)
                         .or_insert_with(|| new_weather_row(ts, db_home_id));
-                    if let Some(v) = di.value {
-                        if let Some(temp) = v.temperature.and_then(|t| t.celsius) {
+                    if let Some(v) = di.value.as_ref() {
+                        if let Some(temp) = v.temperature.as_ref().and_then(|t| t.celsius) {
                             entry.outside_temp_c = Some(temp);
                         }
                         if let Some(state) = v.state.as_ref().and_then(serde_enum_name) {

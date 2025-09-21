@@ -37,7 +37,7 @@ pub fn run() -> Result<(), String> {
     info!("Connected to database");
 
     // 3) Init Tado client
-    let client = TadoClient::new(cfg.tado_refresh_token.clone(), cfg.tado_firefox_version.clone())
+    let client = TadoClient::new(&cfg.tado_refresh_token, &cfg.tado_firefox_version)
         .map_err(|e| format!("Tado auth failed (refresh token invalid/expired?): {}", e))?;
     info!("Authenticated to Tado API");
 
@@ -45,10 +45,9 @@ pub fn run() -> Result<(), String> {
     let me = client.get_me().map_err(|e| format!("get_me failed: {}", e))?;
     let mut target_homes = me
         .homes
-        .as_ref()
-        .cloned()
-        .unwrap_or_default()
-        .into_iter()
+        .as_deref()
+        .unwrap_or(&[])
+        .iter()
         .filter_map(|hb| hb.id.map(|id| id.0))
         .collect::<Vec<_>>();
     target_homes.sort_unstable();
