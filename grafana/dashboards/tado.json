@@ -197,6 +197,25 @@
           "rawQuery": true,
           "format": "time_series",
           "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name AS metric, avg(c.humidity_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1"
+        },
+        {
+          "refId": "hardcoded_query_using_dashboard_variables",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT ${indoor_humidity_floor} as value_min, ${indoor_humidity_ceiling} as value_max;"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "configFromData",
+          "options": {
+            "applyTo": { "id": "byRegexp", "options": "/.*/" },
+            "configRefId": "hardcoded_query_using_dashboard_variables",
+            "mappings": [
+              { "fieldName": "value_min", "handlerKey": "min" },
+              { "fieldName": "value_max", "handlerKey": "max" }
+            ]
+          }
         }
       ]
     },
@@ -566,6 +585,90 @@
         }
       ]
     }
+    ,
+    { "type": "row", "title": "Daily Indoor Humidity", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 99 }, "id": 70 },
+    {
+      "type": "timeseries",
+      "title": "Humidity (Daily) — ${zones}",
+      "id": 71,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 100 },
+      "repeat": "zones",
+      "maxPerRow": 4,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "min" },
+            "properties": [
+              { "id": "custom.stacking", "value": { "group": "A", "mode": "normal" } },
+              { "id": "custom.lineWidth", "value": 2 },
+              { "id": "custom.fillOpacity", "value": 0 },
+              { "id": "color", "value": { "fixedColor": "dark-blue", "mode": "fixed" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "xband" },
+            "properties": [
+              { "id": "custom.stacking", "value": { "group": "A", "mode": "normal" } },
+              { "id": "custom.lineWidth", "value": 0 }, { "id": "custom.fillOpacity", "value": 15 },
+              { "id": "custom.hideFrom", "value": { "legend": true, "tooltip": true, "viz": false } },
+              { "id": "color", "value": { "fixedColor": "#ffffff", "mode": "fixed" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "max" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "dark-red", "mode": "fixed" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "avg" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }
+            ]
+          }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket('1 day', c.time) AS time, 'min' AS metric, min(c.humidity_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'max' AS metric, max(c.humidity_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'avg' AS metric, avg(c.humidity_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'xband' AS metric, max(c.humidity_pct) - min(c.humidity_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "hardcoded_query_using_dashboard_variables",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT ${indoor_humidity_floor} as value_min, ${indoor_humidity_ceiling} as value_max;"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "configFromData",
+          "options": {
+            "applyTo": { "id": "byRegexp", "options": "/.*/" },
+            "configRefId": "hardcoded_query_using_dashboard_variables",
+            "mappings": [
+              { "fieldName": "value_min", "handlerKey": "min" },
+              { "fieldName": "value_max", "handlerKey": "max" }
+            ]
+          }
+        }
+      ]
+    }
   ],
   "refresh": "1m",
   "schemaVersion": 39,
@@ -655,6 +758,24 @@
         "refresh": 2,
         "query": "30",
         "current": { "selected": false, "text": "30", "value": "30" }
+      },
+      {
+        "name": "indoor_humidity_floor",
+        "label": "Humidity display floor",
+        "type": "textbox",
+        "hide": 0,
+        "refresh": 2,
+        "query": "40",
+        "current": { "selected": false, "text": "40", "value": "40" }
+      },
+      {
+        "name": "indoor_humidity_ceiling",
+        "label": "Humidity display ceiling",
+        "type": "textbox",
+        "hide": 0,
+        "refresh": 2,
+        "query": "70",
+        "current": { "selected": false, "text": "70", "value": "70" }
       }
     ]
   },
