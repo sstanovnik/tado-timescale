@@ -463,6 +463,58 @@
         }
       ]
     }
+    ,
+    { "type": "row", "title": "Daily Indoor Temperature", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 90 }, "id": 60 },
+    {
+      "type": "timeseries",
+      "title": "Inside Temp (Daily) — ${zones}",
+      "id": 61,
+      "datasource": { "type": "postgres", "uid": "${ds}" },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 91 },
+      "repeat": "zones",
+      "maxPerRow": 4,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "min" },
+            "properties": [
+              { "id": "custom.stacking", "value": { "mode": "normal", "group": "A" } },
+              { "id": "custom.lineWidth", "value": 0 },
+              { "id": "custom.fillOpacity", "value": 0 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "xband" },
+            "properties": [
+              { "id": "custom.stacking", "value": { "mode": "normal", "group": "A" } },
+              { "id": "custom.lineWidth", "value": 0 },
+              { "id": "custom.fillOpacity", "value": 30 },
+              { "id": "custom.hideFrom", "value": { "legend": true } }
+            ]
+          }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket('1 day', c.time) AS time, 'min' AS metric, min(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'max' AS metric, max(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'avg' AS metric, avg(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'xband' AS metric, max(c.inside_temp_c) - min(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 ORDER BY 1"
+        }
+      ]
+    }
   ],
   "refresh": "1m",
   "schemaVersion": 39,
