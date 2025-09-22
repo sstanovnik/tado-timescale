@@ -138,6 +138,25 @@
           "rawQuery": true,
           "format": "time_series",
           "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name || ' (setpoint)' AS metric, avg(c.setpoint_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1"
+        },
+        {
+          "refId": "hardcoded_query_using_dashboard_variables",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT ${indoor_temp_floor} as value_min, ${indoor_temp_ceiling} as value_max;"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "configFromData",
+          "options": {
+            "applyTo": { "id": "byRegexp", "options": "/.*/" },
+            "configRefId": "hardcoded_query_using_dashboard_variables",
+            "mappings": [
+              { "fieldName": "value_min", "handlerKey": "min" },
+              { "fieldName": "value_max", "handlerKey": "max" }
+            ]
+          }
         }
       ]
     },
@@ -525,6 +544,25 @@
           "rawQuery": true,
           "format": "time_series",
           "rawSql": "SELECT time_bucket('1 day', c.time) AS time, 'min' AS metric, min(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'max' AS metric, max(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'avg' AS metric, avg(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'xband' AS metric, max(c.inside_temp_c) - min(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "hardcoded_query_using_dashboard_variables",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT ${indoor_temp_floor} as value_min, ${indoor_temp_ceiling} as value_max;"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "configFromData",
+          "options": {
+            "applyTo": { "id": "byRegexp", "options": "/.*/" },
+            "configRefId": "hardcoded_query_using_dashboard_variables",
+            "mappings": [
+              { "fieldName": "value_min", "handlerKey": "min" },
+              { "fieldName": "value_max", "handlerKey": "max" }
+            ]
+          }
         }
       ]
     }
@@ -599,6 +637,24 @@
         "includeAll": true,
         "multi": true,
         "current": { "selected": true, "value": ["realtime", "historical"] }
+      },
+      {
+        "name": "indoor_temp_floor",
+        "label": "Indoor temp display floor",
+        "type": "textbox",
+        "hide": 0,
+        "refresh": 2,
+        "query": "18",
+        "current": { "selected": false, "text": "18", "value": "18" }
+      },
+      {
+        "name": "indoor_temp_ceiling",
+        "label": "Indoor temp display ceiling",
+        "type": "textbox",
+        "hide": 0,
+        "refresh": 2,
+        "query": "30",
+        "current": { "selected": false, "text": "30", "value": "30" }
       }
     ]
   },
