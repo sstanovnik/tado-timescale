@@ -489,18 +489,31 @@
           {
             "matcher": { "id": "byName", "options": "min" },
             "properties": [
-              { "id": "custom.stacking", "value": { "mode": "normal", "group": "A" } },
-              { "id": "custom.lineWidth", "value": 0 },
-              { "id": "custom.fillOpacity", "value": 0 }
+              { "id": "custom.stacking", "value": { "group": "A", "mode": "normal" } },
+              { "id": "custom.lineWidth", "value": 2 },
+              { "id": "custom.fillOpacity", "value": 0 },
+              { "id": "color", "value": { "fixedColor": "dark-blue", "mode": "fixed" } }
             ]
           },
           {
             "matcher": { "id": "byName", "options": "xband" },
             "properties": [
-              { "id": "custom.stacking", "value": { "mode": "normal", "group": "A" } },
-              { "id": "custom.lineWidth", "value": 0 },
-              { "id": "custom.fillOpacity", "value": 30 },
-              { "id": "custom.hideFrom", "value": { "legend": true } }
+              { "id": "custom.stacking", "value": { "group": "A", "mode": "normal" } },
+              { "id": "custom.lineWidth", "value": 0 }, { "id": "custom.fillOpacity", "value": 15 },
+              { "id": "custom.hideFrom", "value": { "legend": true, "tooltip": true, "viz": false } },
+              { "id": "color", "value": { "fixedColor": "#ffffff", "mode": "fixed" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "max" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "dark-red", "mode": "fixed" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "avg" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }
             ]
           }
         ]
