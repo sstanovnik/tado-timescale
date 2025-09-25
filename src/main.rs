@@ -21,6 +21,7 @@ use crate::models::tado::HomeId;
 use crate::services::{backfill, realtime, refs};
 use diesel::prelude::*;
 use diesel::PgConnection;
+use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use log::{error, info};
 use std::path::{Path, PathBuf};
 
@@ -28,6 +29,23 @@ use std::path::{Path, PathBuf};
 struct LoadedEnvFile {
     path: PathBuf,
     explicit: bool,
+}
+
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
+
+fn apply_database_migrations(conn: &mut PgConnection) -> Result<(), String> {
+    match conn.run_pending_migrations(MIGRATIONS) {
+        Ok(applied) => {
+            if applied.is_empty() {
+                info!("Database schema is up to date; no migrations were applied");
+            } else {
+                let names = applied.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ");
+                info!("Applied {} database migration(s): {}", applied.len(), names);
+            }
+            Ok(())
+        }
+        Err(e) => Err(format!("Applying database migrations failed: {}", e)),
+    }
 }
 
 pub fn run() -> Result<(), String> {
@@ -52,7 +70,10 @@ pub fn run() -> Result<(), String> {
     let mut conn = PgConnection::establish(&cfg.database_url).map_err(|e| format!("DB connection failed: {}", e))?;
     info!("Connected to database");
 
-    // 3) Init Tado client
+    // 3) Apply pending database migrations
+    apply_database_migrations(&mut conn)?;
+
+    // 4) Init Tado client
     let client = TadoClient::new(
         &cfg.tado_refresh_token,
         &cfg.tado_firefox_version,
@@ -61,7 +82,7 @@ pub fn run() -> Result<(), String> {
     .map_err(|e| format!("Tado auth failed (refresh token invalid/expired?): {}", e))?;
     info!("Authenticated to Tado API");
 
-    // 4) Discover homes
+    // 5) Discover homes
     let me = client.get_me().map_err(|e| format!("get_me failed: {}", e))?;
     let mut target_homes = me
         .homes
@@ -77,12 +98,12 @@ pub fn run() -> Result<(), String> {
     }
     info!("Discovered {} home(s)", target_homes.len());
 
-    // 5) Sync reference data (users/homes/zones/devices/links)
+    // 6) Sync reference data (users/homes/zones/devices/links)
     info!("Syncing reference data");
     refs::sync_all(&mut conn, &client, &me, &target_homes)?;
     info!("Reference data sync complete");
 
-    // 6) Historical backfill
+    // 7) Historical backfill
     if cfg.backfill_enabled {
         info!("Starting historical backfill for {} home(s)", target_homes.len());
         for home_id in &target_homes {
@@ -98,7 +119,7 @@ pub fn run() -> Result<(), String> {
         }
     }
 
-    // 7) Realtime loop (steady cadence)
+    // 8) Realtime loop (steady cadence)
     info!(
         "Starting realtime loop: homes={}, interval={}s",
         target_homes.len(),

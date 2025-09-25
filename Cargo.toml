@@ -11,6 +11,7 @@ chrono = { version = "0.4.42", features = ["serde"] }
 ureq = { version = "3.1.2", features = ["json", "gzip"] }
 http = "1.3.1"
 diesel = { version = "2.3.1", features = ["postgres", "chrono", "serde_json"] }
+diesel_migrations = { version = "2.2.0", features = ["postgres"] }
 log = "0.4.28"
 env_logger = "0.11.8"
 
