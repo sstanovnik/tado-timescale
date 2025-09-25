@@ -1,4 +1,4 @@
-use crate::client::TadoClient;
+use crate::client::{TadoClient, TadoClientError};
 use crate::db::models::event_source;
 use crate::db::models::{NewClimateMeasurement, NewWeatherMeasurement};
 use crate::models::tado::{self, HomeId, ZoneId};
@@ -10,12 +10,16 @@ use diesel::prelude::*;
 use diesel::PgConnection;
 use log::{debug, info};
 use std::collections::BTreeMap;
+use std::num::NonZeroU32;
+use std::thread;
+use std::time::{Duration as StdDuration, Instant};
 
 pub fn run_for_home(
     conn: &mut PgConnection,
     client: &TadoClient,
     home_id: HomeId,
     backfill_from_date: Option<NaiveDate>,
+    backfill_requests_per_second: Option<NonZeroU32>,
 ) -> Result<(), String> {
     // Fetch zones to decide backfill per zone
     let zones = client
@@ -67,6 +71,9 @@ pub fn run_for_home(
         zone_id_map.len()
     );
 
+    let day_report_spacing =
+        backfill_requests_per_second.map(|limit| StdDuration::from_secs_f64(1.0 / limit.get() as f64));
+
     for z in &zones {
         let (Some(zone_id), Some(_)) = (z.id, z.date_created) else {
             continue;
@@ -97,6 +104,7 @@ pub fn run_for_home(
             zone_id,
             db_zone_id,
             weather_window,
+            day_report_spacing,
             from,
             to,
         )?;
@@ -186,6 +194,7 @@ fn backfill_zone_range(
     zone_id: ZoneId,
     db_zone_id: i64,
     weather_window: Option<(DateTime<Utc>, DateTime<Utc>)>,
+    day_report_spacing: Option<StdDuration>,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
 ) -> Result<(), String> {
@@ -200,9 +209,8 @@ fn backfill_zone_range(
 
     while cursor <= end_date {
         days += 1;
-        let report = client
-            .get_zone_day_report(home_id, zone_id, Some(cursor))
-            .map_err(|e| {
+        let report =
+            fetch_day_report_with_limit(client, home_id, zone_id, cursor, day_report_spacing).map_err(|e| {
                 format!(
                     "get_zone_day_report({}, {}, {}) failed: {}",
                     home_id.0, zone_id.0, cursor, e
@@ -398,4 +406,22 @@ fn new_weather_row(ts: DateTime<Utc>, db_home_id: i64) -> NewWeatherMeasurement 
         solar_intensity_pct: None,
         weather_state: None,
     }
+}
+
+fn fetch_day_report_with_limit(
+    client: &TadoClient,
+    home_id: HomeId,
+    zone_id: ZoneId,
+    day: NaiveDate,
+    min_spacing: Option<StdDuration>,
+) -> Result<tado::DayReport, TadoClientError> {
+    let start = Instant::now();
+    let result = client.get_zone_day_report(home_id, zone_id, Some(day));
+    if let Some(required) = min_spacing {
+        let elapsed = start.elapsed();
+        if elapsed < required {
+            thread::sleep(required - elapsed);
+        }
+    }
+    result
 }

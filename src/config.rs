@@ -2,6 +2,7 @@
 //! Defaults align with docker-compose (localhost TimescaleDB).
 
 use chrono::NaiveDate;
+use std::num::NonZeroU32;
 use std::time::Duration;
 use std::{fs, path::Path};
 
@@ -22,6 +23,8 @@ pub struct Config {
     /// Optional lower bound for historical backfill (UTC date at 00:00:00).
     /// When set, the backfill will not request data prior to this date.
     pub backfill_from_date: Option<NaiveDate>,
+    /// Optional cap on Tado historical day report requests per second.
+    pub backfill_requests_per_second: Option<NonZeroU32>,
 }
 
 impl Config {
@@ -63,6 +66,20 @@ impl Config {
             _ => None,
         };
 
+        let backfill_requests_per_second = match std::env::var("BACKFILL_REQUESTS_PER_SECOND") {
+            Ok(raw) if !raw.trim().is_empty() => {
+                let parsed: u32 = raw
+                    .trim()
+                    .parse()
+                    .map_err(|_| "BACKFILL_REQUESTS_PER_SECOND must be a positive integer".to_string())?;
+                Some(
+                    NonZeroU32::new(parsed)
+                        .ok_or_else(|| "BACKFILL_REQUESTS_PER_SECOND must be greater than zero".to_string())?,
+                )
+            }
+            _ => None,
+        };
+
         Ok(Config {
             database_url,
             tado_refresh_token,
@@ -70,6 +87,7 @@ impl Config {
             realtime_interval: Duration::from_secs(realtime_secs),
             backfill_enabled,
             backfill_from_date,
+            backfill_requests_per_second,
         })
     }
 }
