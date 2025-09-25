@@ -668,6 +668,152 @@
           }
         }
       ]
+    },
+    {
+      "type": "row",
+      "title": "Yearly Temperature Trend",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 108 },
+      "id": 80
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "${ds}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 109 },
+      "id": 81,
+      "timeFrom": "now/y",
+      "timeShift": "0y/y",
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "dataset": "tado",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH params AS (\n    SELECT EXTRACT(YEAR FROM CURRENT_DATE)::INT AS target_year\n),\n     raw AS (\n         SELECT\n             cm.home_id,\n             cm.zone_id,\n             (cm.time AT TIME ZONE 'UTC')::date AS sample_day,\n             cm.inside_temp_c\n         FROM climate_measurements cm\n         WHERE\n             cm.inside_temp_c IS NOT NULL\n           AND cm.zone_id IS NOT NULL\n--            AND cm.home_id IN <HOME_FILTER>\n--           AND cm.zone_id IN <ZONE_FILTER>\n     ),\n     decorated AS (\n         SELECT\n             r.sample_day,\n             EXTRACT(YEAR FROM r.sample_day)::INT AS sample_year,\n             COALESCE(z.name, 'Zone ' || z.tado_zone_id::TEXT) AS zone_name,\n             r.inside_temp_c,\n             p.target_year\n         FROM raw r\n                  JOIN zones z ON z.id = r.zone_id\n                  CROSS JOIN params p\n         WHERE NOT (\n             EXTRACT(MONTH FROM r.sample_day) = 2\n                 AND EXTRACT(DAY FROM r.sample_day) = 29\n             )\n     ),\n     aggregated AS (\n         SELECT\n             make_date(\n                     d.target_year,\n                     EXTRACT(MONTH FROM d.sample_day)::INT,\n                     EXTRACT(DAY FROM d.sample_day)::INT\n             )::timestamp AS quasi_ts,\n             d.sample_year,\n             d.zone_name,\n             AVG(d.inside_temp_c) AS value\n         FROM decorated d\n         GROUP BY quasi_ts, d.sample_year, d.zone_name\n     )\nSELECT\n    a.quasi_ts AS \"time\",\n    format('%s (%s)', a.zone_name, a.sample_year) AS series,\n    a.value as \" \"\nFROM aggregated a\nORDER BY \"time\", series;\n",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "name": "AVG",
+                "parameters": [
+                  {
+                    "name": "inside_temp_c",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "name": "\"time\"",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          },
+          "table": "climate_measurements",
+          "datasource": {
+            "type": "postgres",
+            "uid": "${ds}"
+          }
+        },
+        {
+          "refId": "hardcoded_query_using_dashboard_variables",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT ${indoor_temp_floor} as value_min, ${indoor_temp_ceiling} as value_max;"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "configFromData",
+          "options": {
+            "applyTo": { "id": "byRegexp", "options": "/.*/" },
+            "configRefId": "hardcoded_query_using_dashboard_variables",
+            "mappings": [
+              { "fieldName": "value_min", "handlerKey": "min" },
+              { "fieldName": "value_max", "handlerKey": "max" }
+            ]
+          }
+        }
+      ],
+      "title": "Inside Temp by Day (Yearly Comparison)",
+      "type": "timeseries"
     }
   ],
   "refresh": "1m",
@@ -783,6 +929,6 @@
   "timepicker": { "refresh_intervals": ["10s", "30s", "1m", "5m", "10m"] },
   "timezone": "browser",
   "title": "Tado Heating & Climate",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
