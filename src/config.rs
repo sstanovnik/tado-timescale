@@ -25,6 +25,8 @@ pub struct Config {
     pub backfill_from_date: Option<NaiveDate>,
     /// Optional cap on Tado historical day report requests per second.
     pub backfill_requests_per_second: Option<NonZeroU32>,
+    /// Optional sampling rate for day reports during historical backfill (1/N days).
+    pub backfill_sample_rate: Option<NonZeroU32>,
 }
 
 impl Config {
@@ -80,6 +82,30 @@ impl Config {
             _ => None,
         };
 
+        let backfill_sample_rate = match std::env::var("BACKFILL_SAMPLE_RATE") {
+            Ok(raw) if !raw.trim().is_empty() => {
+                let trimmed = raw.trim();
+                let mut parts = trimmed.split('/');
+                let numerator = parts.next().unwrap_or_default().trim();
+                let denominator = parts.next().map(str::trim);
+
+                if parts.next().is_some() || numerator != "1" {
+                    return Err("BACKFILL_SAMPLE_RATE must be in the form 1/N".to_string());
+                }
+
+                let denom_str =
+                    denominator.ok_or_else(|| "BACKFILL_SAMPLE_RATE must be in the form 1/N".to_string())?;
+                let denom: u32 = denom_str
+                    .parse()
+                    .map_err(|_| "BACKFILL_SAMPLE_RATE denominator must be a positive integer".to_string())?;
+                Some(
+                    NonZeroU32::new(denom)
+                        .ok_or_else(|| "BACKFILL_SAMPLE_RATE denominator must be greater than zero".to_string())?,
+                )
+            }
+            _ => None,
+        };
+
         Ok(Config {
             database_url,
             tado_refresh_token,
@@ -88,6 +114,7 @@ impl Config {
             backfill_enabled,
             backfill_from_date,
             backfill_requests_per_second,
+            backfill_sample_rate,
         })
     }
 }

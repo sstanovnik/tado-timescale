@@ -27,7 +27,7 @@ pub fn run() -> Result<(), String> {
     // 1) Load config
     let cfg = Config::from_env()?;
     info!(
-        "Config loaded (realtime_interval={}s, backfill_enabled={}, backfill_from={}, backfill_rps={})",
+        "Config loaded (realtime_interval={}s, backfill_enabled={}, backfill_from={}, backfill_rps={}, backfill_sample_rate={})",
         cfg.realtime_interval.as_secs(),
         cfg.backfill_enabled,
         cfg.backfill_from_date
@@ -35,6 +35,9 @@ pub fn run() -> Result<(), String> {
             .unwrap_or_else(|| "-".to_string()),
         cfg.backfill_requests_per_second
             .map(|v| v.get().to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        cfg.backfill_sample_rate
+            .map(|v| format!("1/{}", v.get()))
             .unwrap_or_else(|| "-".to_string())
     );
 
@@ -78,6 +81,7 @@ pub fn run() -> Result<(), String> {
                 HomeId(*home_id),
                 cfg.backfill_from_date,
                 cfg.backfill_requests_per_second,
+                cfg.backfill_sample_rate,
             )?;
             info!("Backfill completed for home {}", home_id);
         }

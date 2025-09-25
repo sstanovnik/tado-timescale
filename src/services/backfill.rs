@@ -4,7 +4,7 @@ use crate::db::models::{NewClimateMeasurement, NewWeatherMeasurement};
 use crate::models::tado::{self, HomeId, ZoneId};
 use crate::schema;
 use crate::utils::{determine_zone_start_time, serde_enum_name};
-use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, NaiveTime, Utc};
 use diesel::dsl::{max, min};
 use diesel::prelude::*;
 use diesel::PgConnection;
@@ -20,6 +20,7 @@ pub fn run_for_home(
     home_id: HomeId,
     backfill_from_date: Option<NaiveDate>,
     backfill_requests_per_second: Option<NonZeroU32>,
+    backfill_sample_rate: Option<NonZeroU32>,
 ) -> Result<(), String> {
     // Fetch zones to decide backfill per zone
     let zones = client
@@ -73,6 +74,7 @@ pub fn run_for_home(
 
     let day_report_spacing =
         backfill_requests_per_second.map(|limit| StdDuration::from_secs_f64(1.0 / limit.get() as f64));
+    let day_report_sample_rate = backfill_sample_rate;
 
     for z in &zones {
         let (Some(zone_id), Some(_)) = (z.id, z.date_created) else {
@@ -105,6 +107,7 @@ pub fn run_for_home(
             db_zone_id,
             weather_window,
             day_report_spacing,
+            day_report_sample_rate,
             from,
             to,
         )?;
@@ -195,6 +198,7 @@ fn backfill_zone_range(
     db_zone_id: i64,
     weather_window: Option<(DateTime<Utc>, DateTime<Utc>)>,
     day_report_spacing: Option<StdDuration>,
+    day_report_sample_rate: Option<NonZeroU32>,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
 ) -> Result<(), String> {
@@ -205,10 +209,16 @@ fn backfill_zone_range(
     let mut cursor = from.date_naive();
     let end_date = to.date_naive();
     let mut inserted_total: usize = 0;
-    let mut days: u64 = 0;
+    let mut processed_days: u64 = 0;
 
     while cursor <= end_date {
-        days += 1;
+        if let Some(rate) = day_report_sample_rate {
+            if cursor.ordinal() % rate.get() != 0 {
+                cursor = cursor.succ_opt().unwrap_or(NaiveDate::MAX);
+                continue;
+            }
+        }
+
         let report =
             fetch_day_report_with_limit(client, home_id, zone_id, cursor, day_report_spacing).map_err(|e| {
                 format!(
@@ -216,6 +226,7 @@ fn backfill_zone_range(
                     home_id.0, zone_id.0, cursor, e
                 )
             })?;
+        processed_days += 1;
 
         let mut by_ts: BTreeMap<DateTime<Utc>, NewClimateMeasurement> = BTreeMap::new();
         let mut weather_by_ts: BTreeMap<DateTime<Utc>, NewWeatherMeasurement> = BTreeMap::new();
@@ -372,7 +383,7 @@ fn backfill_zone_range(
 
     info!(
         "Backfill: zone {} complete ({} day(s), {} row(s) inserted)",
-        zone_id.0, days, inserted_total
+        zone_id.0, processed_days, inserted_total
     );
 
     Ok(())
