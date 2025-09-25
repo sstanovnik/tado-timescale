@@ -5,6 +5,8 @@ This binary ingests data from the Tado API into a TimescaleDB database, then you
 
 Key behaviour:
 - Loads and writes all historical data on startup, then enters a realtime polling loop.
+- Historical backfill fills gaps up to the first realtime measurement; when no realtime data exists, it
+  continues up to "now" so the database is fully populated.
 
 Authentication (Refresh Token Only)
 -----------------------------------
