@@ -2,11 +2,10 @@ apiVersion: 1
 
 datasources:
   - name: TimescaleDB
-    uid: timescaledb
-    type: postgres
+    type: grafana-postgresql-datasource
     access: proxy
     isDefault: true
-    editable: false
+    editable: true
     url: db:5432
     user: postgres
     database: tado
