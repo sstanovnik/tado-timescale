@@ -9,6 +9,7 @@ use std::{fs, path::PathBuf};
 pub const DEFAULT_DATABASE_URL: &str = "postgres://postgres:postgres@localhost:5432/tado";
 pub const DEFAULT_REALTIME_SECS: u64 = 60;
 pub const DEFAULT_REFRESH_TOKEN_FILE: &str = "token.txt";
+pub const DEFAULT_MAX_REQUEST_RETRIES: u32 = 3;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -32,6 +33,8 @@ pub struct Config {
     pub backfill_requests_per_second: Option<NonZeroU32>,
     /// Optional sampling rate for day reports during historical backfill (1/N days).
     pub backfill_sample_rate: Option<NonZeroU32>,
+    /// Number of retries to perform after the initial request when a server-side error (5xx) occurs.
+    pub max_request_retries: NonZeroU32,
 }
 
 impl Config {
@@ -134,6 +137,18 @@ impl Config {
             _ => None,
         };
 
+        let max_request_retries = match std::env::var("MAX_REQUEST_RETRIES") {
+            Ok(raw) if !raw.trim().is_empty() => {
+                let parsed: u32 = raw
+                    .trim()
+                    .parse()
+                    .map_err(|_| "MAX_REQUEST_RETRIES must be a positive integer".to_string())?;
+                NonZeroU32::new(parsed).ok_or_else(|| "MAX_REQUEST_RETRIES must be greater than zero".to_string())?
+            }
+            _ => NonZeroU32::new(DEFAULT_MAX_REQUEST_RETRIES)
+                .expect("DEFAULT_MAX_REQUEST_RETRIES must be greater than zero"),
+        };
+
         Ok(Config {
             database_url,
             tado_refresh_token,
@@ -145,6 +160,7 @@ impl Config {
             backfill_from_date,
             backfill_requests_per_second,
             backfill_sample_rate,
+            max_request_retries,
         })
     }
 }

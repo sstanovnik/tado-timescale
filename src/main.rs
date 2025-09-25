@@ -52,7 +52,7 @@ pub fn run() -> Result<(), String> {
     // 1) Load config
     let cfg = Config::from_env()?;
     info!(
-        "Config loaded (realtime_interval={}s, realtime_enabled={}, backfill_enabled={}, backfill_from={}, backfill_rps={}, backfill_sample_rate={})",
+        "Config loaded (realtime_interval={}s, realtime_enabled={}, backfill_enabled={}, backfill_from={}, backfill_rps={}, backfill_sample_rate={}, max_request_retries={})",
         cfg.realtime_interval.as_secs(),
         cfg.realtime_enabled,
         cfg.backfill_enabled,
@@ -64,7 +64,8 @@ pub fn run() -> Result<(), String> {
             .unwrap_or_else(|| "-".to_string()),
         cfg.backfill_sample_rate
             .map(|v| format!("1/{}", v.get()))
-            .unwrap_or_else(|| "-".to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        cfg.max_request_retries.get()
     );
 
     // 2) Connect DB
@@ -79,6 +80,7 @@ pub fn run() -> Result<(), String> {
         &cfg.tado_refresh_token,
         &cfg.tado_firefox_version,
         cfg.tado_refresh_token_file.clone(),
+        cfg.max_request_retries,
     )
     .map_err(|e| format!("Tado auth failed (refresh token invalid/expired?): {}", e))?;
     info!("Authenticated to Tado API");

@@ -16,6 +16,7 @@ use chrono::NaiveDate;
 use log::{debug, error, info, warn};
 use serde::de::DeserializeOwned;
 use std::cell::RefCell;
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -74,6 +75,7 @@ pub struct TadoClient {
     oauth: RefCell<OAuthState>,
     firefox_version: String,
     refresh_token_path: PathBuf,
+    max_server_error_retries: NonZeroU32,
 }
 
 impl TadoClient {
@@ -105,6 +107,7 @@ impl TadoClient {
         initial_refresh_token: impl Into<String>,
         firefox_version: impl Into<String>,
         refresh_token_path: impl Into<PathBuf>,
+        max_server_error_retries: NonZeroU32,
     ) -> Result<Self, TadoClientError> {
         let agent = ureq::agent();
 
@@ -116,6 +119,7 @@ impl TadoClient {
             }),
             firefox_version: firefox_version.into(),
             refresh_token_path: refresh_token_path.into(),
+            max_server_error_retries,
         };
 
         // Fetch initial access token using the provided refresh token
@@ -279,18 +283,44 @@ impl TadoClient {
 
     fn get_json<T: DeserializeOwned>(&self, path: &str, query: &[(&str, String)]) -> Result<T, TadoClientError> {
         let url = Self::url(path);
-        let token = self.get_bearer()?;
-        // Log every non-auth endpoint call at info level
-        info!("Tado API GET {}{}", path, format_query_params(query));
-        match self.call_get(&url, query, &token) {
-            Ok(res) if res.status().as_u16() == 401 => self.retry_after_refresh::<T>(&url, query),
-            Ok(mut res) if res.status().is_success() => read_json_body::<T>(&mut res, path),
-            Ok(mut res) => {
-                let status = res.status().as_u16();
-                let msg = read_body_text(&mut res);
-                Err(TadoClientError::Http { status, message: msg })
+        let query_suffix = format_query_params(query);
+        let mut retries_attempted: u32 = 0;
+
+        loop {
+            let token = self.get_bearer()?;
+            // Log every non-auth endpoint call at info level
+            info!("Tado API GET {}{}", path, query_suffix);
+
+            let result = match self.call_get(&url, query, &token) {
+                Ok(res) if res.status().as_u16() == 401 => self.retry_after_refresh::<T>(&url, query),
+                Ok(mut res) if res.status().is_success() => return read_json_body::<T>(&mut res, path),
+                Ok(mut res) => {
+                    let status = res.status().as_u16();
+                    let msg = read_body_text(&mut res);
+                    Err(TadoClientError::Http { status, message: msg })
+                }
+                Err(e) => Err(TadoClientError::Transport(e.to_string())),
+            };
+
+            match result {
+                Ok(value) => return Ok(value),
+                Err(TadoClientError::Http { status, ref message })
+                    if (500..=599).contains(&status) && retries_attempted < self.max_server_error_retries.get() =>
+                {
+                    retries_attempted += 1;
+                    warn!(
+                        "Tado API GET {}{} -> server error {} (attempt {} of {}), retrying",
+                        path,
+                        query_suffix,
+                        status,
+                        retries_attempted,
+                        self.max_server_error_retries.get()
+                    );
+                    debug!("Server error body: {}", message);
+                    continue;
+                }
+                Err(err) => return Err(err),
             }
-            Err(e) => Err(TadoClientError::Transport(e.to_string())),
         }
     }
 
