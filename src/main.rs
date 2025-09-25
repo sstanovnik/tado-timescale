@@ -52,8 +52,9 @@ pub fn run() -> Result<(), String> {
     // 1) Load config
     let cfg = Config::from_env()?;
     info!(
-        "Config loaded (realtime_interval={}s, backfill_enabled={}, backfill_from={}, backfill_rps={}, backfill_sample_rate={})",
+        "Config loaded (realtime_interval={}s, realtime_enabled={}, backfill_enabled={}, backfill_from={}, backfill_rps={}, backfill_sample_rate={})",
         cfg.realtime_interval.as_secs(),
+        cfg.realtime_enabled,
         cfg.backfill_enabled,
         cfg.backfill_from_date
             .map(|d| d.to_string())
@@ -117,15 +118,24 @@ pub fn run() -> Result<(), String> {
             )?;
             info!("Backfill completed for home {}", home_id);
         }
+    } else {
+        info!(
+            "Historical backfill disabled via BACKFILL_ENABLED={}",
+            cfg.backfill_enabled
+        );
     }
 
     // 8) Realtime loop (steady cadence)
-    info!(
-        "Starting realtime loop: homes={}, interval={}s",
-        target_homes.len(),
-        cfg.realtime_interval.as_secs()
-    );
-    realtime::run_loop(&mut conn, &client, &target_homes, cfg.realtime_interval)?;
+    if cfg.realtime_enabled {
+        info!(
+            "Starting realtime loop: homes={}, interval={}s",
+            target_homes.len(),
+            cfg.realtime_interval.as_secs()
+        );
+        realtime::run_loop(&mut conn, &client, &target_homes, cfg.realtime_interval)?;
+    } else {
+        info!("Realtime loop disabled via REALTIME_ENABLED={}", cfg.realtime_enabled);
+    }
 
     Ok(())
 }

@@ -21,6 +21,8 @@ pub struct Config {
     pub tado_firefox_version: String,
     /// Realtime polling cadence.
     pub realtime_interval: Duration,
+    /// Allow skipping the realtime polling loop on startup.
+    pub realtime_enabled: bool,
     /// Allow skipping the historical backfill on startup.
     pub backfill_enabled: bool,
     /// Optional lower bound for historical backfill (UTC date at 00:00:00).
@@ -75,6 +77,11 @@ impl Config {
             .unwrap_or(DEFAULT_REALTIME_SECS);
 
         let tado_firefox_version = std::env::var("TADO_FIREFOX_VERSION").unwrap_or_else(|_| "143.0".to_string());
+
+        let realtime_enabled = std::env::var("REALTIME_ENABLED")
+            .ok()
+            .map(|s| matches!(s.as_str(), "1" | "true" | "TRUE"))
+            .unwrap_or(true);
 
         let backfill_enabled = std::env::var("BACKFILL_ENABLED")
             .ok()
@@ -133,6 +140,7 @@ impl Config {
             tado_refresh_token_file,
             tado_firefox_version,
             realtime_interval: Duration::from_secs(realtime_secs),
+            realtime_enabled,
             backfill_enabled,
             backfill_from_date,
             backfill_requests_per_second,

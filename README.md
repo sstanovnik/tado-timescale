@@ -34,6 +34,7 @@ and you can override the location with `--env-file <path>`.
 
 - `DATABASE_URL` (default `postgres://postgres:postgres@localhost:5432/tado`)
 - `REALTIME_INTERVAL_SECS` (default `60`)
+- `REALTIME_ENABLED` (default `true`) — skip the realtime polling loop when set to `false`.
 - `BACKFILL_ENABLED` (default `true`)
 - `BACKFILL_FROM_DATE` (optional) — limit historical backfill to start at this UTC date (format `YYYY-MM-DD`).
 - `INITIAL_TADO_REFRESH_TOKEN` (required when the persistence file does not exist)
