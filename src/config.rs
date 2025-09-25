@@ -4,16 +4,19 @@
 use chrono::NaiveDate;
 use std::num::NonZeroU32;
 use std::time::Duration;
-use std::{fs, path::Path};
+use std::{fs, path::PathBuf};
 
 pub const DEFAULT_DATABASE_URL: &str = "postgres://postgres:postgres@localhost:5432/tado";
 pub const DEFAULT_REALTIME_SECS: u64 = 60;
+pub const DEFAULT_REFRESH_TOKEN_FILE: &str = "token.txt";
 
 #[derive(Debug, Clone)]
 pub struct Config {
     pub database_url: String,
     /// Initial Tado OAuth refresh token obtained via browser login.
     pub tado_refresh_token: String,
+    /// Path used to persist rotated refresh tokens.
+    pub tado_refresh_token_file: PathBuf,
     /// Firefox version to spoof in the User-Agent (e.g. "143.0").
     pub tado_firefox_version: String,
     /// Realtime polling cadence.
@@ -32,21 +35,39 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Result<Self, String> {
         let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DATABASE_URL.to_string());
-        // Prefer env var; fallback to token.txt in working directory
-        let tado_refresh_token =
-            match std::env::var("TADO_REFRESH_TOKEN") {
-                Ok(v) if !v.trim().is_empty() => v,
-                _ => {
-                    let path = Path::new("token.txt");
-                    match fs::read_to_string(path) {
-                        Ok(s) if !s.trim().is_empty() => s.trim().to_string(),
-                        _ => return Err(
-                            "Missing refresh token: set TADO_REFRESH_TOKEN or provide token.txt in working directory"
-                                .to_string(),
-                        ),
-                    }
-                }
-            };
+        let tado_refresh_token_file = std::env::var("TADO_REFRESH_TOKEN_PERSISTENCE_FILE")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(DEFAULT_REFRESH_TOKEN_FILE));
+
+        let tado_refresh_token = if tado_refresh_token_file.is_file() {
+            let contents = fs::read_to_string(&tado_refresh_token_file).map_err(|e| {
+                format!(
+                    "Failed to read refresh token from {}: {}",
+                    tado_refresh_token_file.display(),
+                    e
+                )
+            })?;
+            let trimmed = contents.trim();
+            if trimmed.is_empty() {
+                return Err(format!(
+                    "Refresh token file {} is empty; delete it or populate it with a valid token",
+                    tado_refresh_token_file.display()
+                ));
+            }
+            trimmed.to_string()
+        } else {
+            let env_value = std::env::var("INITIAL_TADO_REFRESH_TOKEN").map_err(|_| {
+                format!(
+                    "Missing refresh token: set INITIAL_TADO_REFRESH_TOKEN or provide {}",
+                    tado_refresh_token_file.display()
+                )
+            })?;
+            let trimmed = env_value.trim();
+            if trimmed.is_empty() {
+                return Err("INITIAL_TADO_REFRESH_TOKEN must not be empty".to_string());
+            }
+            trimmed.to_string()
+        };
 
         let realtime_secs = std::env::var("REALTIME_INTERVAL_SECS")
             .ok()
@@ -109,6 +130,7 @@ impl Config {
         Ok(Config {
             database_url,
             tado_refresh_token,
+            tado_refresh_token_file,
             tado_firefox_version,
             realtime_interval: Duration::from_secs(realtime_secs),
             backfill_enabled,

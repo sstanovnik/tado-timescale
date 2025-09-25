@@ -22,6 +22,13 @@ use crate::services::{backfill, realtime, refs};
 use diesel::prelude::*;
 use diesel::PgConnection;
 use log::{error, info};
+use std::path::{Path, PathBuf};
+
+#[derive(Debug)]
+struct LoadedEnvFile {
+    path: PathBuf,
+    explicit: bool,
+}
 
 pub fn run() -> Result<(), String> {
     // 1) Load config
@@ -46,8 +53,12 @@ pub fn run() -> Result<(), String> {
     info!("Connected to database");
 
     // 3) Init Tado client
-    let client = TadoClient::new(&cfg.tado_refresh_token, &cfg.tado_firefox_version)
-        .map_err(|e| format!("Tado auth failed (refresh token invalid/expired?): {}", e))?;
+    let client = TadoClient::new(
+        &cfg.tado_refresh_token,
+        &cfg.tado_firefox_version,
+        cfg.tado_refresh_token_file.clone(),
+    )
+    .map_err(|e| format!("Tado auth failed (refresh token invalid/expired?): {}", e))?;
     info!("Authenticated to Tado API");
 
     // 4) Discover homes
@@ -98,12 +109,214 @@ pub fn run() -> Result<(), String> {
     Ok(())
 }
 
+fn configure_env_from_cli() -> Result<Option<LoadedEnvFile>, String> {
+    let mut args = std::env::args_os();
+    args.next(); // skip program name
+
+    let mut env_file: Option<PathBuf> = None;
+
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--env-file") => {
+                if env_file.is_some() {
+                    return Err("`--env-file` provided more than once".to_string());
+                }
+                let value = args
+                    .next()
+                    .ok_or_else(|| "`--env-file` requires a path argument".to_string())?;
+                env_file = Some(PathBuf::from(value));
+            }
+            Some(s) if s.starts_with("--env-file=") => {
+                if env_file.is_some() {
+                    return Err("`--env-file` provided more than once".to_string());
+                }
+                let path_str = &s["--env-file=".len()..];
+                if path_str.is_empty() {
+                    return Err("`--env-file` requires a path argument".to_string());
+                }
+                env_file = Some(PathBuf::from(path_str));
+            }
+            Some("--") => break,
+            Some(other) => return Err(format!("unrecognised argument: {}", other)),
+            None => return Err("argument contains invalid UTF-8".to_string()),
+        }
+    }
+
+    if let Some(path) = env_file {
+        if !path.is_file() {
+            return Err(format!("env file not found: {}", path.display()));
+        }
+        load_env_file(&path)?;
+        Ok(Some(LoadedEnvFile { path, explicit: true }))
+    } else {
+        let cwd = std::env::current_dir().map_err(|e| format!("unable to read current directory: {}", e))?;
+        let default_path = cwd.join(".env");
+        if default_path.is_file() {
+            load_env_file(&default_path)?;
+            Ok(Some(LoadedEnvFile {
+                path: default_path,
+                explicit: false,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+fn load_env_file(path: &Path) -> Result<(), String> {
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+
+    let file = File::open(path).map_err(|e| format!("failed to open {}: {}", path.display(), e))?;
+    let reader = BufReader::new(file);
+
+    for (index, line) in reader.lines().enumerate() {
+        let line = line.map_err(|e| format!("failed to read {} at line {}: {}", path.display(), index + 1, e))?;
+        match parse_env_assignment(&line) {
+            Ok(Some((key, value))) => {
+                // Preserve any value that was already supplied via the process environment.
+                if std::env::var_os(&key).is_none() {
+                    // Updating process-level environment variables is unsafe on some targets.
+                    unsafe {
+                        std::env::set_var(key, value);
+                    }
+                }
+            }
+            Ok(None) => {}
+            Err(e) => {
+                return Err(format!("{}:{}: {}", path.display(), index + 1, e));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn parse_env_assignment(line: &str) -> Result<Option<(String, String)>, String> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return Ok(None);
+    }
+
+    let without_export = trimmed
+        .strip_prefix("export ")
+        .map(|s| s.trim_start())
+        .unwrap_or(trimmed);
+
+    let mut parts = without_export.splitn(2, '=');
+    let key = parts
+        .next()
+        .map(str::trim)
+        .ok_or_else(|| "missing environment variable name".to_string())?;
+    let value_part = parts.next().ok_or_else(|| "missing '=' in assignment".to_string())?;
+
+    if key.is_empty() {
+        return Err("environment variable name cannot be empty".to_string());
+    }
+    if key.chars().any(|c| c.is_whitespace()) {
+        return Err(format!("environment variable name contains whitespace: {}", key));
+    }
+
+    let value = parse_env_value(value_part)?;
+    Ok(Some((key.to_string(), value)))
+}
+
+fn parse_env_value(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(String::new());
+    }
+
+    if let Some(rest) = trimmed.strip_prefix('"') {
+        parse_double_quoted(rest)
+    } else if let Some(rest) = trimmed.strip_prefix('\'') {
+        parse_single_quoted(rest)
+    } else {
+        let value = trimmed.splitn(2, '#').next().unwrap_or_default().trim_end();
+        Ok(value.to_string())
+    }
+}
+
+fn parse_double_quoted(input: &str) -> Result<String, String> {
+    let mut result = String::new();
+    let mut chars = input.chars();
+    let mut escape = false;
+
+    while let Some(ch) = chars.next() {
+        if escape {
+            let value = match ch {
+                'n' => '\n',
+                'r' => '\r',
+                't' => '\t',
+                '\\' => '\\',
+                '"' => '"',
+                other => other,
+            };
+            result.push(value);
+            escape = false;
+            continue;
+        }
+
+        match ch {
+            '\\' => escape = true,
+            '"' => {
+                let remainder = chars.as_str().trim();
+                if remainder.is_empty() || remainder.starts_with('#') {
+                    return Ok(result);
+                } else {
+                    return Err("unexpected characters after closing double quote".to_string());
+                }
+            }
+            other => result.push(other),
+        }
+    }
+
+    if escape {
+        Err("unterminated escape sequence in double-quoted value".to_string())
+    } else {
+        Err("unterminated double-quoted value".to_string())
+    }
+}
+
+fn parse_single_quoted(input: &str) -> Result<String, String> {
+    let mut result = String::new();
+    let mut chars = input.chars();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\'' {
+            let remainder = chars.as_str().trim();
+            if remainder.is_empty() || remainder.starts_with('#') {
+                return Ok(result);
+            } else {
+                return Err("unexpected characters after closing single quote".to_string());
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+
+    Err("unterminated single-quoted value".to_string())
+}
+
 fn main() {
-    // Init logging early; default to info if RUST_LOG not set
+    let loaded_env = match configure_env_from_cli() {
+        Ok(info) => info,
+        Err(err) => {
+            eprintln!("fatal: {}", err);
+            std::process::exit(1);
+        }
+    };
+
+    // Init logging after environment so RUST_LOG from .env is respected.
     let default_filter = env_logger::Env::default().default_filter_or("info");
     env_logger::Builder::from_env(default_filter)
         .format_timestamp_secs()
         .init();
+
+    if let Some(info) = loaded_env.as_ref() {
+        let origin = if info.explicit { "CLI-specified" } else { "default" };
+        info!("Environment loaded from {} .env file: {}", origin, info.path.display());
+    }
 
     info!(
         "tado-timescale {} (git {}) starting",

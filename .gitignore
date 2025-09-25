@@ -8,3 +8,5 @@ target/
 *.pdf
 
 token.txt
+.env
+!.env.example

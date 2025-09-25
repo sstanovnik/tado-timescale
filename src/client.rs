@@ -16,6 +16,7 @@ use chrono::NaiveDate;
 use log::{debug, error, info, warn};
 use serde::de::DeserializeOwned;
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 const BASE_URL: &str = "https://my.tado.com/api/v2";
@@ -72,6 +73,7 @@ pub struct TadoClient {
     agent: ureq::Agent,
     oauth: RefCell<OAuthState>,
     firefox_version: String,
+    refresh_token_path: PathBuf,
 }
 
 impl TadoClient {
@@ -102,6 +104,7 @@ impl TadoClient {
     pub fn new(
         initial_refresh_token: impl Into<String>,
         firefox_version: impl Into<String>,
+        refresh_token_path: impl Into<PathBuf>,
     ) -> Result<Self, TadoClientError> {
         let agent = ureq::agent();
 
@@ -112,6 +115,7 @@ impl TadoClient {
                 refresh_token: initial_refresh_token.into(),
             }),
             firefox_version: firefox_version.into(),
+            refresh_token_path: refresh_token_path.into(),
         };
 
         // Fetch initial access token using the provided refresh token
@@ -149,15 +153,32 @@ impl TadoClient {
         Self::parse_token_response(resp)
     }
 
-    fn persist_refresh_token(token: &str) {
+    fn persist_refresh_token(&self, token: &str) {
         // Best-effort write; never log the token value.
-        if let Err(e) = std::fs::write("token.txt", token) {
+        if let Some(parent) = self.refresh_token_path.parent() {
+            if !parent.as_os_str().is_empty() {
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    warn!(
+                        "Tado OAuth: failed to create directory {} for refresh token persistence: {}",
+                        parent.display(),
+                        e
+                    );
+                    return;
+                }
+            }
+        }
+
+        if let Err(e) = std::fs::write(&self.refresh_token_path, token) {
             warn!(
-                "Tado OAuth: failed to persist rotated refresh token to token.txt: {}",
+                "Tado OAuth: failed to persist rotated refresh token to {}: {}",
+                self.refresh_token_path.display(),
                 e
             );
         } else {
-            info!("Tado OAuth: rotated refresh token persisted to token.txt");
+            info!(
+                "Tado OAuth: rotated refresh token persisted to {}",
+                self.refresh_token_path.display()
+            );
         }
     }
 
@@ -208,7 +229,7 @@ impl TadoClient {
             if let Some(r) = new_refresh {
                 s.refresh_token = r;
                 // Persist the rotated refresh token for future runs.
-                Self::persist_refresh_token(&s.refresh_token);
+                self.persist_refresh_token(&s.refresh_token);
             }
             s.token = Some(new_access);
         }
@@ -238,7 +259,7 @@ impl TadoClient {
             if let Some(r) = new_refresh {
                 s.refresh_token = r;
                 // Persist the rotated refresh token for future runs.
-                Self::persist_refresh_token(&s.refresh_token);
+                self.persist_refresh_token(&s.refresh_token);
             }
             s.token = Some(new_access);
         }
