@@ -6,7 +6,7 @@ This binary ingests data from the Tado API into a TimescaleDB database, then you
 Key behaviour:
 - Loads and writes all historical data on startup, then enters a realtime polling loop.
 - Tado's historical day reports return placeholder data beyond roughly one year in the past (indoors fixed at 20 C / 50% and outdoor fields null); the backfill step skips these bogus readings before inserting into TimescaleDB.
-- Historical backfill only requests days that contain measurement gaps of at least one hour (considering all sources) and limits inserts to the missing intervals to avoid duplicating existing data.
+- Historical backfill only requests days that contain measurement gaps of at least four hours (considering all sources) and limits inserts to the missing intervals to avoid duplicating existing data.
 - The realtime loop assumes the set of zones is static for the duration of the process: the mapping is cached at startup, and if a subsequent API call for a previously-known zone fails (for example because the zone was deleted), the binary logs an error and exits. Restart the process after adding or removing zones in Tado.
 
 Authentication (Refresh Token Only)

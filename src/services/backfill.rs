@@ -4,7 +4,7 @@ use crate::db::models::{NewClimateMeasurement, NewWeatherMeasurement};
 use crate::models::tado::{self, HomeId, ZoneId};
 use crate::schema;
 use crate::utils::{determine_zone_start_time, serde_enum_name};
-use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, SecondsFormat, Utc};
 use diesel::dsl::max;
 use diesel::prelude::*;
 use diesel::PgConnection;
@@ -28,6 +28,32 @@ struct Gap {
     start: DateTime<Utc>,
     end: DateTime<Utc>,
     start_inclusive: bool,
+}
+
+fn format_gap_range(gap: &Gap) -> String {
+    let start_bracket = if gap.start_inclusive { '[' } else { '(' };
+    let start = gap.start.to_rfc3339_opts(SecondsFormat::Secs, true);
+    let end = gap.end.to_rfc3339_opts(SecondsFormat::Secs, true);
+    format!("{open}{start}, {end})", open = start_bracket, start = start, end = end)
+}
+
+fn format_gap_ranges_for_log(gaps: &[Gap]) -> String {
+    gaps
+        .iter()
+        .map(format_gap_range)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn log_gap_summary(zone_id: ZoneId, gaps_by_day: &BTreeMap<NaiveDate, Vec<Gap>>) {
+    for (day, ranges) in gaps_by_day {
+        info!(
+            "Backfill: zone {} day {} requires backfill for {}",
+            zone_id.0,
+            day,
+            format_gap_ranges_for_log(ranges)
+        );
+    }
 }
 
 fn timestamp_in_any_gap(ts: DateTime<Utc>, gaps: &[Gap]) -> bool {
@@ -252,7 +278,7 @@ pub fn run_for_home(
         };
         let gaps_by_day = find_zone_gaps(conn, db_home_id, db_zone_id, start)?;
         if gaps_by_day.is_empty() {
-            debug!("Backfill: zone {} has no >=1h gaps after {}", zone_id.0, start);
+            debug!("Backfill: zone {} has no >=4h gaps after {}", zone_id.0, start);
             continue;
         }
 
@@ -269,6 +295,8 @@ pub fn run_for_home(
             gaps_by_day.len(),
             total_gap_hours
         );
+
+        log_gap_summary(zone_id, &gaps_by_day);
 
         backfill_zone_range(
             conn,
@@ -314,7 +342,7 @@ fn find_zone_gaps(
         .load(conn)
         .map_err(|e| format!("query measurement timestamps failed: {}", e))?;
 
-    let min_gap = Duration::hours(1);
+    let min_gap = Duration::hours(4);
     let mut cursor_date = start.date_naive();
     let end_date = now.date_naive();
     let mut idx = 0usize;
@@ -438,6 +466,13 @@ fn find_first_non_bogus_day(
         return Ok(None);
     }
 
+    info!(
+        "Backfill: probing historical signal for zone {} between {} and {}",
+        zone_id.0,
+        start,
+        end
+    );
+
     let total_days = end.signed_duration_since(start).num_days().max(0);
 
     let mut low: i64 = 0;
@@ -463,6 +498,18 @@ fn find_first_non_bogus_day(
             }
             high = mid - 1;
         }
+    }
+
+    match candidate {
+        Some(day) => info!(
+            "Backfill: first non-bogus day for zone {} found at {}",
+            zone_id.0,
+            day
+        ),
+        None => info!(
+            "Backfill: no non-bogus historical data detected for zone {} in requested range",
+            zone_id.0
+        ),
     }
 
     Ok(candidate)
