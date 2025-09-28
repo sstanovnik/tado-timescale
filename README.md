@@ -53,6 +53,7 @@ and you can override the location with `--env-file <path>`.
 Build & Run
 -----------
 - Build: `cargo build`
+- Docker build (BuildKit): `docker buildx build . --tag local/tado-timescale --load`
 - Run: `INITIAL_TADO_REFRESH_TOKEN=... cargo run --`
 - Release build: `cargo build --release`
 - Lint: `cargo clippy --all-targets -- -D warnings`
