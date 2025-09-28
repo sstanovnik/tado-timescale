@@ -1,7 +1,7 @@
 //! Minimal runtime configuration helpers.
 //! Defaults align with docker-compose (localhost TimescaleDB).
 
-use chrono::NaiveDate;
+use chrono::{Duration as ChronoDuration, NaiveDate};
 use std::env::{self, VarError};
 use std::num::NonZeroU32;
 use std::time::Duration;
@@ -36,6 +36,8 @@ pub struct Config {
     pub backfill_sample_rate: Option<NonZeroU32>,
     /// Number of retries to perform after the initial request when a server-side error (5xx) occurs.
     pub max_request_retries: NonZeroU32,
+    /// Minimum gap size that qualifies for historical backfill.
+    pub backfill_min_gap: ChronoDuration,
 }
 
 impl Config {
@@ -119,6 +121,11 @@ impl Config {
             None => None,
         };
 
+        let backfill_min_gap_minutes = env_nonzero_u32_with_default(
+            "BACKFILL_MIN_GAP_MINUTES",
+            NonZeroU32::new(240).expect("default backfill gap minutes > 0"),
+        )?;
+
         let max_request_retries = env_nonzero_u32_with_default(
             "MAX_REQUEST_RETRIES",
             NonZeroU32::new(DEFAULT_MAX_REQUEST_RETRIES)
@@ -137,6 +144,7 @@ impl Config {
             backfill_requests_per_second,
             backfill_sample_rate,
             max_request_retries,
+            backfill_min_gap: ChronoDuration::minutes(backfill_min_gap_minutes.get() as i64),
         })
     }
 }

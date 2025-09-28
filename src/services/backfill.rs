@@ -38,11 +38,7 @@ fn format_gap_range(gap: &Gap) -> String {
 }
 
 fn format_gap_ranges_for_log(gaps: &[Gap]) -> String {
-    gaps
-        .iter()
-        .map(format_gap_range)
-        .collect::<Vec<_>>()
-        .join(", ")
+    gaps.iter().map(format_gap_range).collect::<Vec<_>>().join(", ")
 }
 
 fn log_gap_summary(zone_id: ZoneId, gaps_by_day: &BTreeMap<NaiveDate, Vec<Gap>>) {
@@ -189,6 +185,7 @@ pub fn run_for_home(
     backfill_from_date: Option<NaiveDate>,
     backfill_requests_per_second: Option<NonZeroU32>,
     backfill_sample_rate: Option<NonZeroU32>,
+    min_gap: Duration,
 ) -> Result<(), String> {
     // Fetch zones to decide backfill per zone
     let zones = client
@@ -276,9 +273,14 @@ pub fn run_for_home(
             Some(min_dt) if start < min_dt => min_dt,
             _ => start,
         };
-        let gaps_by_day = find_zone_gaps(conn, db_home_id, db_zone_id, start)?;
+        let gaps_by_day = find_zone_gaps(conn, db_home_id, db_zone_id, start, min_gap)?;
         if gaps_by_day.is_empty() {
-            debug!("Backfill: zone {} has no >=4h gaps after {}", zone_id.0, start);
+            debug!(
+                "Backfill: zone {} has no >={}min gaps after {}",
+                zone_id.0,
+                min_gap.num_minutes(),
+                start
+            );
             continue;
         }
 
@@ -320,6 +322,7 @@ fn find_zone_gaps(
     db_home_id: i64,
     db_zone_id: i64,
     start: DateTime<Utc>,
+    min_gap: Duration,
 ) -> Result<BTreeMap<NaiveDate, Vec<Gap>>, String> {
     use schema::climate_measurements::dsl as C;
 
@@ -342,7 +345,6 @@ fn find_zone_gaps(
         .load(conn)
         .map_err(|e| format!("query measurement timestamps failed: {}", e))?;
 
-    let min_gap = Duration::hours(4);
     let mut cursor_date = start.date_naive();
     let end_date = now.date_naive();
     let mut idx = 0usize;
@@ -468,9 +470,7 @@ fn find_first_non_bogus_day(
 
     info!(
         "Backfill: probing historical signal for zone {} between {} and {}",
-        zone_id.0,
-        start,
-        end
+        zone_id.0, start, end
     );
 
     let total_days = end.signed_duration_since(start).num_days().max(0);
@@ -501,11 +501,7 @@ fn find_first_non_bogus_day(
     }
 
     match candidate {
-        Some(day) => info!(
-            "Backfill: first non-bogus day for zone {} found at {}",
-            zone_id.0,
-            day
-        ),
+        Some(day) => info!("Backfill: first non-bogus day for zone {} found at {}", zone_id.0, day),
         None => info!(
             "Backfill: no non-bogus historical data detected for zone {} in requested range",
             zone_id.0
