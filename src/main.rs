@@ -11,6 +11,8 @@ pub mod schema;
 pub mod utils;
 pub mod services {
     pub mod backfill;
+    pub mod fake_data;
+    pub mod ingest;
     pub mod realtime;
     pub mod refs;
 }
@@ -18,7 +20,7 @@ pub mod services {
 use crate::client::TadoClient;
 use crate::config::Config;
 use crate::models::tado::HomeId;
-use crate::services::{backfill, realtime, refs};
+use crate::services::{backfill, fake_data, realtime, refs};
 use diesel::prelude::*;
 use diesel::PgConnection;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
@@ -52,7 +54,7 @@ pub fn run() -> Result<(), String> {
     // 1) Load config
     let cfg = Config::from_env()?;
     info!(
-        "Config loaded (realtime_interval={}s, realtime_enabled={}, backfill_enabled={}, backfill_from={}, backfill_rps={}, backfill_sample_rate={}, backfill_min_gap={}min, max_request_retries={})",
+        "Config loaded (realtime_interval={}s, realtime_enabled={}, backfill_enabled={}, backfill_from={}, backfill_rps={}, backfill_sample_rate={}, backfill_min_gap={}min, max_request_retries={}, fake_data_mode={})",
         cfg.realtime_interval.as_secs(),
         cfg.realtime_enabled,
         cfg.backfill_enabled,
@@ -66,7 +68,8 @@ pub fn run() -> Result<(), String> {
             .map(|v| format!("1/{}", v.get()))
             .unwrap_or_else(|| "-".to_string()),
         cfg.backfill_min_gap.num_minutes(),
-        cfg.max_request_retries.get()
+        cfg.max_request_retries.get(),
+        cfg.fake_data_mode
     );
 
     // 2) Connect DB
@@ -75,6 +78,12 @@ pub fn run() -> Result<(), String> {
 
     // 3) Apply pending database migrations
     apply_database_migrations(&mut conn)?;
+
+    if cfg.fake_data_mode {
+        info!("Fake data mode enabled; generating synthetic dataset");
+        fake_data::run(&mut conn)?;
+        return Ok(());
+    }
 
     // 4) Init Tado client
     let client = TadoClient::new(

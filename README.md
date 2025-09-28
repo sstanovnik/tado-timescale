@@ -49,6 +49,7 @@ and you can override the location with `--env-file <path>`.
 - `INITIAL_TADO_REFRESH_TOKEN` (required when the persistence file does not exist)
 - `TADO_REFRESH_TOKEN_PERSISTENCE_FILE` (default `token.txt`)
 - `TADO_FIREFOX_VERSION` (default `143.0`) — version string in the spoofed User-Agent.
+- `FAKE_DATA_MODE` (default `false`) — when `true`, skips the Tado API and generates synthetic backfill data instead.
 
 Build & Run
 -----------
@@ -58,3 +59,13 @@ Build & Run
 - Release build: `cargo build --release`
 - Lint: `cargo clippy --all-targets -- -D warnings`
 - Format: `cargo fmt --all`
+
+Fake Data Mode
+--------------
+Set `FAKE_DATA_MODE=true` to populate the database with synthetic history instead of contacting the Tado API. The run will:
+- upsert a simulated home (`tado_home_id` `4201337`) with eight representative zones,
+- generate five years of 15-minute climate and weather measurements with realistic seasonal and daily variation,
+- write the rows through the same insertion path used by real backfill,
+- exit after completion (no realtime loop or API calls).
+
+Toggle the flag back to `false` before running against the real service.

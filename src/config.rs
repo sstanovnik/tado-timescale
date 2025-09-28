@@ -38,16 +38,22 @@ pub struct Config {
     pub max_request_retries: NonZeroU32,
     /// Minimum gap size that qualifies for historical backfill.
     pub backfill_min_gap: ChronoDuration,
+    /// Enable synthetic data generation instead of contacting Tado.
+    pub fake_data_mode: bool,
 }
 
 impl Config {
     pub fn from_env() -> Result<Self, String> {
         let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DATABASE_URL.to_string());
+        let fake_data_mode = env_bool("FAKE_DATA_MODE", false)?;
+
         let tado_refresh_token_file = env::var("TADO_REFRESH_TOKEN_PERSISTENCE_FILE")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from(DEFAULT_REFRESH_TOKEN_FILE));
 
-        let tado_refresh_token = if tado_refresh_token_file.is_file() {
+        let tado_refresh_token = if fake_data_mode {
+            env::var("INITIAL_TADO_REFRESH_TOKEN").unwrap_or_default()
+        } else if tado_refresh_token_file.is_file() {
             let contents = fs::read_to_string(&tado_refresh_token_file).map_err(|e| {
                 format!(
                     "Failed to read refresh token from {}: {}",
@@ -145,6 +151,7 @@ impl Config {
             backfill_sample_rate,
             max_request_retries,
             backfill_min_gap: ChronoDuration::minutes(backfill_min_gap_minutes.get() as i64),
+            fake_data_mode,
         })
     }
 }

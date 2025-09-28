@@ -3,6 +3,7 @@ use crate::db::models::event_source;
 use crate::db::models::{NewClimateMeasurement, NewWeatherMeasurement};
 use crate::models::tado::{self, HomeId, ZoneId};
 use crate::schema;
+use crate::services::ingest::{insert_climate_measurements, insert_weather_measurements};
 use crate::utils::{determine_zone_start_time, serde_enum_name};
 use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, SecondsFormat, Utc};
 use diesel::dsl::max;
@@ -539,9 +540,6 @@ fn backfill_zone_range(
     day_report_sample_rate: Option<NonZeroU32>,
     gaps_by_day: &BTreeMap<NaiveDate, Vec<Gap>>,
 ) -> Result<(), String> {
-    use schema::climate_measurements::dsl as C;
-    use schema::weather_measurements::dsl as W;
-
     if gaps_by_day.is_empty() {
         return Ok(());
     }
@@ -733,25 +731,11 @@ fn backfill_zone_range(
         remove_leading_bogus_rows(&mut by_ts);
 
         let rows: Vec<NewClimateMeasurement> = by_ts.into_values().collect();
-        if !rows.is_empty() {
-            let inserted = diesel::insert_into(C::climate_measurements)
-                .values(&rows)
-                .on_conflict((C::time, C::home_id, C::source, C::zone_id, C::device_id))
-                .do_nothing()
-                .execute(conn)
-                .map_err(|e| format!("insert historical climate rows failed: {}", e))?;
-            inserted_total += inserted as usize;
-        }
+        let inserted = insert_climate_measurements(conn, &rows)?;
+        inserted_total += inserted;
 
-        if !weather_by_ts.is_empty() {
-            let rows: Vec<NewWeatherMeasurement> = weather_by_ts.into_values().collect();
-            let _ = diesel::insert_into(W::weather_measurements)
-                .values(&rows)
-                .on_conflict((W::home_id, W::time, W::source))
-                .do_nothing()
-                .execute(conn)
-                .map_err(|e| format!("insert historical weather rows failed: {}", e))?;
-        }
+        let weather_rows: Vec<NewWeatherMeasurement> = weather_by_ts.into_values().collect();
+        insert_weather_measurements(conn, &weather_rows)?;
     }
 
     info!(
