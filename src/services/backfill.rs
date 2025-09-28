@@ -62,15 +62,15 @@ fn is_day_report_bogus(report: &tado::DayReport) -> bool {
             }
         }
 
-        if !indoor_has_real_signal {
-            if let Some(points) = md.humidity.as_ref().and_then(|series| series.data_points.as_ref()) {
-                for point in points {
-                    if let Some(value) = point.value {
-                        indoor_had_data = true;
-                        if !approx_eq(value, BOGUS_HUMIDITY_FRACTION) {
-                            indoor_has_real_signal = true;
-                            break;
-                        }
+        if !indoor_has_real_signal
+            && let Some(points) = md.humidity.as_ref().and_then(|series| series.data_points.as_ref())
+        {
+            for point in points {
+                if let Some(value) = point.value {
+                    indoor_had_data = true;
+                    if !approx_eq(value, BOGUS_HUMIDITY_FRACTION) {
+                        indoor_has_real_signal = true;
+                        break;
                     }
                 }
             }
@@ -107,14 +107,13 @@ fn is_day_report_bogus(report: &tado::DayReport) -> bool {
             }
         }
 
-        if !outdoor_has_real_signal {
-            if let Some(slots) = weather.slots.as_ref().and_then(|series| series.slots.as_ref()) {
-                for slot in slots.values() {
-                    outdoor_had_data = true;
-                    if slot.is_some() {
-                        outdoor_has_real_signal = true;
-                        break;
-                    }
+        if !outdoor_has_real_signal && let Some(slots) = weather.slots.as_ref().and_then(|series| series.slots.as_ref())
+        {
+            for slot in slots.values() {
+                outdoor_had_data = true;
+                if slot.is_some() {
+                    outdoor_has_real_signal = true;
+                    break;
                 }
             }
         }
@@ -227,7 +226,7 @@ pub fn run_for_home(
             Some(v) => *v,
             None => continue,
         };
-        let start = determine_zone_start_time(client, home_id, zone_id)
+        let start = determine_zone_start_time(&zones, zone_id)
             .map_err(|e| format!("determine start time failed for zone {}: {}", zone_id.0, e))?;
         let start = match min_start_dt_utc {
             Some(min_dt) if start < min_dt => min_dt,
@@ -409,7 +408,7 @@ fn find_first_non_bogus_day(
         return Ok(None);
     }
 
-    let total_days = end.signed_duration_since(start).num_days().max(0) as i64;
+    let total_days = end.signed_duration_since(start).num_days().max(0);
 
     let mut low: i64 = 0;
     let mut high: i64 = total_days;
@@ -505,10 +504,11 @@ fn backfill_zone_range(
             continue;
         }
 
-        if let Some(rate) = day_report_sample_rate {
-            if *day != first_day && day.ordinal() % rate.get() != 0 {
-                continue;
-            }
+        if let Some(rate) = day_report_sample_rate
+            && *day != first_day
+            && day.ordinal() % rate.get() != 0
+        {
+            continue;
         }
 
         let report = fetch_day_report_with_limit(client, home_id, zone_id, *day, day_report_spacing).map_err(|e| {
@@ -532,7 +532,9 @@ fn backfill_zone_range(
                         if !timestamp_in_any_gap(ts, gaps) {
                             continue;
                         }
-                        let entry = by_ts.entry(ts).or_insert_with(|| new_row(ts, db_home_id, db_zone_id));
+                        let entry = by_ts.entry(ts).or_insert_with(|| {
+                            NewClimateMeasurement::new(ts, db_home_id, Some(db_zone_id), None, event_source::HISTORICAL)
+                        });
                         entry.inside_temp_c = Some(val);
                     }
                 }
@@ -543,7 +545,9 @@ fn backfill_zone_range(
                         if !timestamp_in_any_gap(ts, gaps) {
                             continue;
                         }
-                        let entry = by_ts.entry(ts).or_insert_with(|| new_row(ts, db_home_id, db_zone_id));
+                        let entry = by_ts.entry(ts).or_insert_with(|| {
+                            NewClimateMeasurement::new(ts, db_home_id, Some(db_zone_id), None, event_source::HISTORICAL)
+                        });
                         entry.humidity_pct = Some(val * 100.0);
                     }
                 }
@@ -558,7 +562,9 @@ fn backfill_zone_range(
                         if !timestamp_in_any_gap(ts, gaps) {
                             continue;
                         }
-                        let entry = by_ts.entry(ts).or_insert_with(|| new_row(ts, db_home_id, db_zone_id));
+                        let entry = by_ts.entry(ts).or_insert_with(|| {
+                            NewClimateMeasurement::new(ts, db_home_id, Some(db_zone_id), None, event_source::HISTORICAL)
+                        });
                         entry.connection_up = Some(val);
                     }
                 }
@@ -577,7 +583,9 @@ fn backfill_zone_range(
                         tado::CallForHeatValue::Medium => 66.0,
                         tado::CallForHeatValue::High => 100.0,
                     };
-                    let entry = by_ts.entry(ts).or_insert_with(|| new_row(ts, db_home_id, db_zone_id));
+                    let entry = by_ts.entry(ts).or_insert_with(|| {
+                        NewClimateMeasurement::new(ts, db_home_id, Some(db_zone_id), None, event_source::HISTORICAL)
+                    });
                     entry.heating_power_pct = Some(pct);
                 }
             }
@@ -590,7 +598,9 @@ fn backfill_zone_range(
                         continue;
                     }
                     let on = matches!(val, tado::Power::On);
-                    let entry = by_ts.entry(ts).or_insert_with(|| new_row(ts, db_home_id, db_zone_id));
+                    let entry = by_ts.entry(ts).or_insert_with(|| {
+                        NewClimateMeasurement::new(ts, db_home_id, Some(db_zone_id), None, event_source::HISTORICAL)
+                    });
                     entry.ac_power_on = Some(on);
                 }
             }
@@ -606,7 +616,9 @@ fn backfill_zone_range(
                         let setpoint = val.temperature.as_ref().and_then(|t| t.celsius);
                         let ac_mode = val.mode.as_ref().and_then(serde_enum_name);
                         let ac_on = val.power.map(|p| matches!(p, tado::Power::On));
-                        let entry = by_ts.entry(ts).or_insert_with(|| new_row(ts, db_home_id, db_zone_id));
+                        let entry = by_ts.entry(ts).or_insert_with(|| {
+                            NewClimateMeasurement::new(ts, db_home_id, Some(db_zone_id), None, event_source::HISTORICAL)
+                        });
                         if let Some(sp) = setpoint {
                             entry.setpoint_temp_c = Some(sp);
                         }
@@ -632,7 +644,7 @@ fn backfill_zone_range(
                     }
                     let entry = weather_by_ts
                         .entry(ts)
-                        .or_insert_with(|| new_weather_row(ts, db_home_id));
+                        .or_insert_with(|| NewWeatherMeasurement::new(ts, db_home_id, event_source::HISTORICAL));
                     if let Some(v) = di.value.as_ref() {
                         if let Some(temp) = v.temperature.as_ref().and_then(|t| t.celsius) {
                             entry.outside_temp_c = Some(temp);
@@ -675,36 +687,6 @@ fn backfill_zone_range(
     );
 
     Ok(())
-}
-
-fn new_row(ts: DateTime<Utc>, db_home_id: i64, db_zone_id: i64) -> NewClimateMeasurement {
-    NewClimateMeasurement {
-        time: ts,
-        home_id: db_home_id,
-        zone_id: Some(db_zone_id),
-        device_id: None,
-        source: event_source::HISTORICAL.to_string(),
-        inside_temp_c: None,
-        humidity_pct: None,
-        setpoint_temp_c: None,
-        heating_power_pct: None,
-        ac_power_on: None,
-        ac_mode: None,
-        window_open: None,
-        battery_low: None,
-        connection_up: None,
-    }
-}
-
-fn new_weather_row(ts: DateTime<Utc>, db_home_id: i64) -> NewWeatherMeasurement {
-    NewWeatherMeasurement {
-        time: ts,
-        home_id: db_home_id,
-        source: event_source::HISTORICAL.to_string(),
-        outside_temp_c: None,
-        solar_intensity_pct: None,
-        weather_state: None,
-    }
 }
 
 fn fetch_day_report_with_limit(
@@ -751,10 +733,10 @@ mod tests {
             .and_then(|m| m.inside_temperature.as_mut())
             .and_then(|series| series.data_points.as_mut())
             .expect("fixture has inside temp data");
-        if let Some(first) = md.first_mut() {
-            if let Some(temp) = first.value.as_mut() {
-                temp.celsius = Some(19.5);
-            }
+        if let Some(first) = md.first_mut()
+            && let Some(temp) = first.value.as_mut()
+        {
+            temp.celsius = Some(19.5);
         }
 
         assert!(!is_day_report_bogus(&report));
@@ -764,46 +746,16 @@ mod tests {
     fn removes_leading_bogus_rows_only() {
         let mut rows = BTreeMap::new();
         let ts1 = Utc.with_ymd_and_hms(2023, 1, 1, 0, 0, 0).unwrap();
-        rows.insert(
-            ts1,
-            NewClimateMeasurement {
-                time: ts1,
-                home_id: 1,
-                zone_id: Some(1),
-                device_id: None,
-                source: event_source::HISTORICAL.to_string(),
-                inside_temp_c: Some(BOGUS_TEMP_C),
-                humidity_pct: Some(BOGUS_HUMIDITY_PERCENT),
-                setpoint_temp_c: None,
-                heating_power_pct: None,
-                ac_power_on: None,
-                ac_mode: None,
-                window_open: None,
-                battery_low: None,
-                connection_up: None,
-            },
-        );
+        let mut first = NewClimateMeasurement::new(ts1, 1, Some(1), None, event_source::HISTORICAL);
+        first.inside_temp_c = Some(BOGUS_TEMP_C);
+        first.humidity_pct = Some(BOGUS_HUMIDITY_PERCENT);
+        rows.insert(ts1, first);
 
         let ts2 = Utc.with_ymd_and_hms(2023, 1, 1, 0, 15, 0).unwrap();
-        rows.insert(
-            ts2,
-            NewClimateMeasurement {
-                time: ts2,
-                home_id: 1,
-                zone_id: Some(1),
-                device_id: None,
-                source: event_source::HISTORICAL.to_string(),
-                inside_temp_c: Some(20.8),
-                humidity_pct: Some(55.0),
-                setpoint_temp_c: None,
-                heating_power_pct: None,
-                ac_power_on: None,
-                ac_mode: None,
-                window_open: None,
-                battery_low: None,
-                connection_up: None,
-            },
-        );
+        let mut second = NewClimateMeasurement::new(ts2, 1, Some(1), None, event_source::HISTORICAL);
+        second.inside_temp_c = Some(20.8);
+        second.humidity_pct = Some(55.0);
+        rows.insert(ts2, second);
 
         remove_leading_bogus_rows(&mut rows);
         assert_eq!(rows.len(), 1);
@@ -820,22 +772,22 @@ mod tests {
             end,
             start_inclusive: true,
         };
-        assert!(timestamp_in_any_gap(start, &[inclusive_gap.clone()]));
+        assert!(timestamp_in_any_gap(start, std::slice::from_ref(&inclusive_gap)));
         assert!(timestamp_in_any_gap(
             start + chrono::Duration::minutes(15),
-            &[inclusive_gap.clone()]
+            std::slice::from_ref(&inclusive_gap)
         ));
-        assert!(!timestamp_in_any_gap(end, &[inclusive_gap.clone()]));
+        assert!(!timestamp_in_any_gap(end, std::slice::from_ref(&inclusive_gap)));
 
         let exclusive_gap = Gap {
             start,
             end,
             start_inclusive: false,
         };
-        assert!(!timestamp_in_any_gap(start, &[exclusive_gap.clone()]));
+        assert!(!timestamp_in_any_gap(start, std::slice::from_ref(&exclusive_gap)));
         assert!(timestamp_in_any_gap(
             start + chrono::Duration::minutes(15),
-            &[exclusive_gap]
+            std::slice::from_ref(&exclusive_gap)
         ));
     }
 }

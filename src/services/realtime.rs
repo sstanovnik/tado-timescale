@@ -104,14 +104,10 @@ fn collect_home(
             .and_then(|ws| ws.value.as_ref())
             .and_then(serde_enum_name);
 
-        let row = NewWeatherMeasurement {
-            time: ts,
-            home_id: db_home_id,
-            source: event_source::REALTIME.into(),
-            outside_temp_c: weather.outside_temperature.as_ref().and_then(|t| t.celsius),
-            solar_intensity_pct: weather.solar_intensity.as_ref().and_then(|s| s.percentage),
-            weather_state,
-        };
+        let mut row = NewWeatherMeasurement::new(ts, db_home_id, event_source::REALTIME);
+        row.outside_temp_c = weather.outside_temperature.as_ref().and_then(|t| t.celsius);
+        row.solar_intensity_pct = weather.solar_intensity.as_ref().and_then(|s| s.percentage);
+        row.weather_state = weather_state;
         if let Err(e) = diesel::insert_into(W::weather_measurements)
             .values(&row)
             .on_conflict((W::home_id, W::time, W::source))
@@ -190,22 +186,14 @@ fn collect_home(
             .as_ref()
             .and_then(|set| set.mode.as_ref().and_then(serde_enum_name));
 
-        let row = NewClimateMeasurement {
-            time: ts,
-            home_id: db_home_id,
-            zone_id: Some(db_zone_id),
-            device_id: None,
-            source: event_source::REALTIME.into(),
-            inside_temp_c,
-            humidity_pct,
-            setpoint_temp_c,
-            heating_power_pct,
-            ac_power_on,
-            ac_mode,
-            window_open: state.open_window.as_ref().map(|_| true),
-            battery_low: None,
-            connection_up: None,
-        };
+        let mut row = NewClimateMeasurement::new(ts, db_home_id, Some(db_zone_id), None, event_source::REALTIME);
+        row.inside_temp_c = inside_temp_c;
+        row.humidity_pct = humidity_pct;
+        row.setpoint_temp_c = setpoint_temp_c;
+        row.heating_power_pct = heating_power_pct;
+        row.ac_power_on = ac_power_on;
+        row.ac_mode = ac_mode;
+        row.window_open = state.open_window.as_ref().map(|_| true);
         if let Err(e) = diesel::insert_into(C::climate_measurements)
             .values(&row)
             .on_conflict((C::time, C::home_id, C::source, C::zone_id, C::device_id))
@@ -244,22 +232,9 @@ fn collect_home(
             let conn_up = d.connection_state.as_ref().and_then(|cs| cs.value);
             let battery_low = d.battery_state.map(|b| matches!(b, tado::BatteryState::Low));
 
-            let row = NewClimateMeasurement {
-                time: ts,
-                home_id: db_home_id,
-                zone_id: None,
-                device_id: Some(db_device_id),
-                source: event_source::REALTIME.into(),
-                inside_temp_c: None,
-                humidity_pct: None,
-                setpoint_temp_c: None,
-                heating_power_pct: None,
-                ac_power_on: None,
-                ac_mode: None,
-                window_open: None,
-                battery_low,
-                connection_up: conn_up,
-            };
+            let mut row = NewClimateMeasurement::new(ts, db_home_id, None, Some(db_device_id), event_source::REALTIME);
+            row.battery_low = battery_low;
+            row.connection_up = conn_up;
             if let Err(e) = diesel::insert_into(C::climate_measurements)
                 .values(&row)
                 .on_conflict((C::time, C::home_id, C::source, C::zone_id, C::device_id))

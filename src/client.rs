@@ -159,17 +159,16 @@ impl TadoClient {
 
     fn persist_refresh_token(&self, token: &str) {
         // Best-effort write; never log the token value.
-        if let Some(parent) = self.refresh_token_path.parent() {
-            if !parent.as_os_str().is_empty() {
-                if let Err(e) = std::fs::create_dir_all(parent) {
-                    warn!(
-                        "Tado OAuth: failed to create directory {} for refresh token persistence: {}",
-                        parent.display(),
-                        e
-                    );
-                    return;
-                }
-            }
+        if let Some(parent) = self.refresh_token_path.parent()
+            && !parent.as_os_str().is_empty()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            warn!(
+                "Tado OAuth: failed to create directory {} for refresh token persistence: {}",
+                parent.display(),
+                e
+            );
+            return;
         }
 
         if let Err(e) = std::fs::write(&self.refresh_token_path, token) {

@@ -238,6 +238,33 @@ pub struct NewClimateMeasurement {
     pub connection_up: Option<bool>,
 }
 
+impl NewClimateMeasurement {
+    pub fn new(
+        time: DateTime<Utc>,
+        home_id: i64,
+        zone_id: Option<i64>,
+        device_id: Option<i64>,
+        source: impl Into<String>,
+    ) -> Self {
+        Self {
+            time,
+            home_id,
+            zone_id,
+            device_id,
+            source: source.into(),
+            inside_temp_c: None,
+            humidity_pct: None,
+            setpoint_temp_c: None,
+            heating_power_pct: None,
+            ac_power_on: None,
+            ac_mode: None,
+            window_open: None,
+            battery_low: None,
+            connection_up: None,
+        }
+    }
+}
+
 // Hypertable: weather_measurements
 #[derive(Debug, Clone, Queryable, Identifiable, Associations, Selectable, Serialize, Deserialize)]
 #[diesel(table_name = schema::weather_measurements)]
@@ -262,6 +289,19 @@ pub struct NewWeatherMeasurement {
     pub outside_temp_c: Option<f64>,
     pub solar_intensity_pct: Option<f64>,
     pub weather_state: Option<String>,
+}
+
+impl NewWeatherMeasurement {
+    pub fn new(time: DateTime<Utc>, home_id: i64, source: impl Into<String>) -> Self {
+        Self {
+            time,
+            home_id,
+            source: source.into(),
+            outside_temp_c: None,
+            solar_intensity_pct: None,
+            weather_state: None,
+        }
+    }
 }
 
 // Hypertable: events (non-climate and general lifecycle events)

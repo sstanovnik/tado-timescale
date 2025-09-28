@@ -1,5 +1,4 @@
-use crate::client::{TadoClient, TadoClientError};
-use crate::models::tado::{HomeId, ZoneId};
+use crate::models::tado::{self, ZoneId};
 use chrono::{DateTime, Utc};
 use core::fmt;
 use serde::Serialize;
@@ -9,8 +8,6 @@ use std::fmt::{Display, Formatter};
 /// Errors that can occur while determining a zone's historical start time.
 #[derive(Debug)]
 pub enum StartTimeError {
-    /// Underlying API client error
-    Api(TadoClientError),
     /// The specified zone ID was not found in the home
     ZoneNotFound(ZoneId),
     /// The zone exists but does not report a creation timestamp
@@ -20,7 +17,6 @@ pub enum StartTimeError {
 impl Display for StartTimeError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            StartTimeError::Api(e) => write!(f, "api error: {}", e),
             StartTimeError::ZoneNotFound(z) => write!(f, "zone {} not found in home", z.0),
             StartTimeError::MissingDateCreated(z) => {
                 write!(f, "zone {} missing date_created field", z.0)
@@ -29,20 +25,7 @@ impl Display for StartTimeError {
     }
 }
 
-impl Error for StartTimeError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            StartTimeError::Api(e) => Some(e),
-            _ => None,
-        }
-    }
-}
-
-impl From<TadoClientError> for StartTimeError {
-    fn from(value: TadoClientError) -> Self {
-        StartTimeError::Api(value)
-    }
-}
+impl Error for StartTimeError {}
 
 /// Determine the earliest timestamp to begin historical backfill for a zone.
 ///
@@ -52,14 +35,9 @@ impl From<TadoClientError> for StartTimeError {
 /// - Return the raw creation timestamp without normalization.
 ///
 /// Errors when the zone cannot be found or `date_created` is missing.
-pub fn determine_zone_start_time(
-    client: &TadoClient,
-    home_id: HomeId,
-    zone_id: ZoneId,
-) -> Result<DateTime<Utc>, StartTimeError> {
-    let zones = client.get_zones(home_id)?;
+pub fn determine_zone_start_time(zones: &[tado::Zone], zone_id: ZoneId) -> Result<DateTime<Utc>, StartTimeError> {
     let zone = zones
-        .into_iter()
+        .iter()
         .find(|z| z.id == Some(zone_id))
         .ok_or(StartTimeError::ZoneNotFound(zone_id))?;
 

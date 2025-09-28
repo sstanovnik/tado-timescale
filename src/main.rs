@@ -265,7 +265,10 @@ fn parse_env_value(raw: &str) -> Result<String, String> {
     } else if let Some(rest) = trimmed.strip_prefix('\'') {
         parse_single_quoted(rest)
     } else {
-        let value = trimmed.splitn(2, '#').next().unwrap_or_default().trim_end();
+        let value = trimmed
+            .split_once('#')
+            .map(|(before, _)| before.trim_end())
+            .unwrap_or(trimmed);
         Ok(value.to_string())
     }
 }
