@@ -28,7 +28,9 @@ How to obtain a refresh token
 
 Notes:
 - The program mimics the browser’s headers for both token refresh and API calls (User-Agent version configurable).
-- Tokens rotate. The app only stores the refreshed token in memory; it is not persisted. If you restart the binary, you must supply a valid refresh token again.
+- Tokens rotate. Each refreshed token is written back to `TADO_REFRESH_TOKEN_PERSISTENCE_FILE`, and subsequent runs
+  will load that file when present. Provide `INITIAL_TADO_REFRESH_TOKEN` only when seeding the persistence file for
+  the first run or when rotating manually.
 
 Configuration
 -------------
@@ -41,6 +43,8 @@ and you can override the location with `--env-file <path>`.
 - `MAX_REQUEST_RETRIES` (default `3`) — number of retry attempts after a 5xx response before surfacing the error.
 - `BACKFILL_ENABLED` (default `true`)
 - `BACKFILL_FROM_DATE` (optional) — limit historical backfill to start at this UTC date (format `YYYY-MM-DD`).
+- `BACKFILL_REQUESTS_PER_SECOND` (optional) — throttle historical day-report calls to this maximum rate.
+- `BACKFILL_SAMPLE_RATE` (optional) — sample historical day-report requests; expects the form `1/N` (e.g. `1/3`).
 - `INITIAL_TADO_REFRESH_TOKEN` (required when the persistence file does not exist)
 - `TADO_REFRESH_TOKEN_PERSISTENCE_FILE` (default `token.txt`)
 - `TADO_FIREFOX_VERSION` (default `143.0`) — version string in the spoofed User-Agent.
