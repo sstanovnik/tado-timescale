@@ -76,6 +76,9 @@ impl Config {
         };
 
         let realtime_secs = env_u64("REALTIME_INTERVAL_SECS", DEFAULT_REALTIME_SECS)?;
+        if realtime_secs == 0 {
+            return Err("REALTIME_INTERVAL_SECS must be at least 1".to_string());
+        }
 
         let tado_firefox_version = env::var("TADO_FIREFOX_VERSION").unwrap_or_else(|_| "143.0".to_string());
 

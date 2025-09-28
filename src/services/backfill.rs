@@ -8,7 +8,7 @@ use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, Utc};
 use diesel::dsl::max;
 use diesel::prelude::*;
 use diesel::PgConnection;
-use log::{debug, info};
+use log::{debug, info, warn};
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::thread;
@@ -184,7 +184,14 @@ pub fn run_for_home(
 
     // Compute weather backfill window once per home (avoid extra API calls later),
     // clamping the start to the configured minimum date when provided.
-    let weather_window = select_reference_zone_and_start(&zones)
+    let reference_zone = select_reference_zone_and_start(&zones);
+    if reference_zone.is_none() {
+        warn!(
+            "Backfill: home {} has no zone with a date_created timestamp; skipping weather backfill",
+            home_id.0
+        );
+    }
+    let weather_window = reference_zone
         .map(|(_, home_start)| {
             let effective_start = match min_start_dt_utc {
                 Some(min_dt) if home_start < min_dt => min_dt,
@@ -195,18 +202,26 @@ pub fn run_for_home(
         .transpose()?;
 
     for z in &zones {
-        if let (Some(zid), Some(_)) = (z.id, z.date_created) {
-            let db_zone_id: i64 = schema::zones::dsl::zones
-                .filter(
-                    schema::zones::dsl::home_id
-                        .eq(db_home_id)
-                        .and(schema::zones::dsl::tado_zone_id.eq(zid.0)),
-                )
-                .select(schema::zones::dsl::id)
-                .first(conn)
-                .map_err(|e| format!("fetch db_zone_id failed: {}", e))?;
-            zone_id_map.insert(zid.0, db_zone_id);
+        let Some(zid) = z.id else {
+            let name = z.name.as_deref().unwrap_or("-");
+            warn!("Backfill: skipping zone without id (name=\"{}\")", name);
+            continue;
+        };
+        if z.date_created.is_none() {
+            warn!("Backfill: skipping zone {} (missing date_created timestamp)", zid.0);
+            continue;
         }
+
+        let db_zone_id: i64 = schema::zones::dsl::zones
+            .filter(
+                schema::zones::dsl::home_id
+                    .eq(db_home_id)
+                    .and(schema::zones::dsl::tado_zone_id.eq(zid.0)),
+            )
+            .select(schema::zones::dsl::id)
+            .first(conn)
+            .map_err(|e| format!("fetch db_zone_id failed: {}", e))?;
+        zone_id_map.insert(zid.0, db_zone_id);
     }
     debug!(
         "Backfill: home {} eligible zones with date_created: {}",
@@ -219,12 +234,15 @@ pub fn run_for_home(
     let day_report_sample_rate = backfill_sample_rate;
 
     for z in &zones {
-        let (Some(zone_id), Some(_)) = (z.id, z.date_created) else {
+        let Some(zone_id) = z.id else {
             continue;
         };
-        let db_zone_id = match zone_id_map.get(&zone_id.0) {
-            Some(v) => *v,
-            None => continue,
+        if z.date_created.is_none() {
+            continue;
+        }
+        let Some(db_zone_id) = zone_id_map.get(&zone_id.0).copied() else {
+            warn!("Backfill: zone {} not found in database mapping; skipping", zone_id.0);
+            continue;
         };
         let start = determine_zone_start_time(&zones, zone_id)
             .map_err(|e| format!("determine start time failed for zone {}: {}", zone_id.0, e))?;
@@ -283,8 +301,23 @@ fn find_zone_gaps(
         return Ok(gaps);
     }
 
+    let times: Vec<DateTime<Utc>> = C::climate_measurements
+        .filter(
+            C::home_id
+                .eq(db_home_id)
+                .and(C::zone_id.eq(db_zone_id))
+                .and(C::time.ge(start))
+                .and(C::time.lt(now)),
+        )
+        .select(C::time)
+        .order(C::time.asc())
+        .load(conn)
+        .map_err(|e| format!("query measurement timestamps failed: {}", e))?;
+
+    let min_gap = Duration::hours(1);
     let mut cursor_date = start.date_naive();
     let end_date = now.date_naive();
+    let mut idx = 0usize;
 
     while cursor_date <= end_date {
         let day_start = cursor_date.and_time(NaiveTime::MIN).and_utc();
@@ -312,23 +345,20 @@ fn find_zone_gaps(
             }
         }
 
-        let times: Vec<DateTime<Utc>> = C::climate_measurements
-            .filter(
-                C::home_id
-                    .eq(db_home_id)
-                    .and(C::zone_id.eq(db_zone_id))
-                    .and(C::time.ge(effective_start))
-                    .and(C::time.lt(day_end)),
-            )
-            .select(C::time)
-            .order(C::time.asc())
-            .load(conn)
-            .map_err(|e| format!("query measurement timestamps failed: {}", e))?;
+        while idx < times.len() && times[idx] < effective_start {
+            idx += 1;
+        }
+
+        let day_start_idx = idx;
+        while idx < times.len() && times[idx] < day_end {
+            idx += 1;
+        }
+        let day_times = &times[day_start_idx..idx];
 
         let mut day_gaps: Vec<Gap> = Vec::new();
 
-        if times.is_empty() {
-            if day_end - effective_start >= chrono::Duration::hours(1) {
+        if day_times.is_empty() {
+            if day_end - effective_start >= min_gap {
                 day_gaps.push(Gap {
                     start: effective_start,
                     end: day_end,
@@ -336,8 +366,8 @@ fn find_zone_gaps(
                 });
             }
         } else {
-            let first = times[0];
-            if first - effective_start >= chrono::Duration::hours(1) {
+            let first = day_times[0];
+            if first - effective_start >= min_gap {
                 day_gaps.push(Gap {
                     start: effective_start,
                     end: first,
@@ -346,8 +376,8 @@ fn find_zone_gaps(
             }
 
             let mut prev = first;
-            for &ts in times.iter().skip(1) {
-                if ts - prev >= chrono::Duration::hours(1) {
+            for &ts in &day_times[1..] {
+                if ts - prev >= min_gap {
                     day_gaps.push(Gap {
                         start: prev,
                         end: ts,
@@ -357,7 +387,7 @@ fn find_zone_gaps(
                 prev = ts;
             }
 
-            if day_end - prev >= chrono::Duration::hours(1) {
+            if day_end - prev >= min_gap {
                 day_gaps.push(Gap {
                     start: prev,
                     end: day_end,
