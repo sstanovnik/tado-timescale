@@ -5,7 +5,7 @@ use crate::models::tado::{self, HomeId, ZoneId};
 use crate::schema;
 use crate::utils::{determine_zone_start_time, serde_enum_name};
 use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, Utc};
-use diesel::dsl::{max, min};
+use diesel::dsl::max;
 use diesel::prelude::*;
 use diesel::PgConnection;
 use log::{debug, info};
@@ -21,6 +21,24 @@ const FLOAT_EPSILON: f64 = 1e-6;
 
 fn approx_eq(lhs: f64, rhs: f64) -> bool {
     (lhs - rhs).abs() <= FLOAT_EPSILON
+}
+
+#[derive(Debug, Clone)]
+struct Gap {
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+    start_inclusive: bool,
+}
+
+fn timestamp_in_any_gap(ts: DateTime<Utc>, gaps: &[Gap]) -> bool {
+    gaps.iter().any(|gap| {
+        let lower_ok = if gap.start_inclusive {
+            ts >= gap.start
+        } else {
+            ts > gap.start
+        };
+        lower_ok && ts < gap.end
+    })
 }
 
 fn is_day_report_bogus(report: &tado::DayReport) -> bool {
@@ -215,14 +233,26 @@ pub fn run_for_home(
             Some(min_dt) if start < min_dt => min_dt,
             _ => start,
         };
-        let (from, to) = compute_backfill_window(conn, db_home_id, db_zone_id, start)?;
-        if from >= to {
+        let gaps_by_day = find_zone_gaps(conn, db_home_id, db_zone_id, start)?;
+        if gaps_by_day.is_empty() {
+            debug!("Backfill: zone {} has no >=1h gaps after {}", zone_id.0, start);
             continue;
         }
+
+        let total_gap_hours: f64 = gaps_by_day
+            .values()
+            .flat_map(|ranges| ranges.iter())
+            .map(|gap| (gap.end - gap.start).num_minutes() as f64 / 60.0)
+            .sum();
+
         info!(
-            "Backfill: home {} zone {} from {} to {}",
-            home_id.0, zone_id.0, from, to
+            "Backfill: home {} zone {} has {} day(s) with gaps (≈{:.1}h)",
+            home_id.0,
+            zone_id.0,
+            gaps_by_day.len(),
+            total_gap_hours
         );
+
         backfill_zone_range(
             conn,
             client,
@@ -233,47 +263,121 @@ pub fn run_for_home(
             weather_window,
             day_report_spacing,
             day_report_sample_rate,
-            from,
-            to,
+            &gaps_by_day,
         )?;
     }
 
     Ok(())
 }
 
-fn compute_backfill_window(
+fn find_zone_gaps(
     conn: &mut PgConnection,
     db_home_id: i64,
     db_zone_id: i64,
     start: DateTime<Utc>,
-) -> Result<(DateTime<Utc>, DateTime<Utc>), String> {
+) -> Result<BTreeMap<NaiveDate, Vec<Gap>>, String> {
     use schema::climate_measurements::dsl as C;
-    let last_hist: Option<DateTime<Utc>> = schema::climate_measurements::dsl::climate_measurements
-        .filter(
-            C::home_id
-                .eq(db_home_id)
-                .and(C::zone_id.eq(db_zone_id))
-                .and(C::source.eq(event_source::HISTORICAL)),
-        )
-        .select(max(C::time))
-        .first(conn)
-        .map_err(|e| format!("query last historical failed: {}", e))?;
-    let earliest_realtime: Option<DateTime<Utc>> = schema::climate_measurements::dsl::climate_measurements
-        .filter(
-            C::home_id
-                .eq(db_home_id)
-                .and(C::zone_id.eq(db_zone_id))
-                .and(C::source.eq(event_source::REALTIME)),
-        )
-        .select(min(C::time))
-        .first(conn)
-        .map_err(|e| format!("query earliest realtime failed: {}", e))?;
 
-    let base_from = last_hist.map(|t| t + chrono::Duration::seconds(1)).unwrap_or(start);
-    // Ensure we never go earlier than the desired start
-    let from = base_from.max(start);
-    let to = earliest_realtime.unwrap_or_else(Utc::now);
-    Ok((from, to))
+    let mut gaps: BTreeMap<NaiveDate, Vec<Gap>> = BTreeMap::new();
+    let now = Utc::now();
+    if start >= now {
+        return Ok(gaps);
+    }
+
+    let mut cursor_date = start.date_naive();
+    let end_date = now.date_naive();
+
+    while cursor_date <= end_date {
+        let day_start = cursor_date.and_time(NaiveTime::MIN).and_utc();
+        let mut effective_start = day_start;
+        if cursor_date == start.date_naive() && start > day_start {
+            effective_start = start;
+        }
+
+        let day_end = if cursor_date == end_date {
+            now
+        } else {
+            cursor_date
+                .succ_opt()
+                .unwrap_or(NaiveDate::MAX)
+                .and_time(NaiveTime::MIN)
+                .and_utc()
+        };
+
+        if day_end <= effective_start {
+            if let Some(next) = cursor_date.succ_opt() {
+                cursor_date = next;
+                continue;
+            } else {
+                break;
+            }
+        }
+
+        let times: Vec<DateTime<Utc>> = C::climate_measurements
+            .filter(
+                C::home_id
+                    .eq(db_home_id)
+                    .and(C::zone_id.eq(db_zone_id))
+                    .and(C::time.ge(effective_start))
+                    .and(C::time.lt(day_end)),
+            )
+            .select(C::time)
+            .order(C::time.asc())
+            .load(conn)
+            .map_err(|e| format!("query measurement timestamps failed: {}", e))?;
+
+        let mut day_gaps: Vec<Gap> = Vec::new();
+
+        if times.is_empty() {
+            if day_end - effective_start >= chrono::Duration::hours(1) {
+                day_gaps.push(Gap {
+                    start: effective_start,
+                    end: day_end,
+                    start_inclusive: true,
+                });
+            }
+        } else {
+            let first = times[0];
+            if first - effective_start >= chrono::Duration::hours(1) {
+                day_gaps.push(Gap {
+                    start: effective_start,
+                    end: first,
+                    start_inclusive: true,
+                });
+            }
+
+            let mut prev = first;
+            for &ts in times.iter().skip(1) {
+                if ts - prev >= chrono::Duration::hours(1) {
+                    day_gaps.push(Gap {
+                        start: prev,
+                        end: ts,
+                        start_inclusive: false,
+                    });
+                }
+                prev = ts;
+            }
+
+            if day_end - prev >= chrono::Duration::hours(1) {
+                day_gaps.push(Gap {
+                    start: prev,
+                    end: day_end,
+                    start_inclusive: false,
+                });
+            }
+        }
+
+        if !day_gaps.is_empty() {
+            gaps.insert(cursor_date, day_gaps);
+        }
+
+        match cursor_date.succ_opt() {
+            Some(next) => cursor_date = next,
+            None => break,
+        }
+    }
+
+    Ok(gaps)
 }
 
 fn compute_weather_backfill_window(
@@ -282,19 +386,14 @@ fn compute_weather_backfill_window(
     start: DateTime<Utc>,
 ) -> Result<(DateTime<Utc>, DateTime<Utc>), String> {
     use schema::weather_measurements::dsl as W;
-    let last_hist: Option<DateTime<Utc>> = W::weather_measurements
-        .filter(W::home_id.eq(db_home_id).and(W::source.eq(event_source::HISTORICAL)))
+    let last_any: Option<DateTime<Utc>> = W::weather_measurements
+        .filter(W::home_id.eq(db_home_id))
         .select(max(W::time))
         .first(conn)
-        .map_err(|e| format!("query last weather historical failed: {}", e))?;
-    let earliest_rt: Option<DateTime<Utc>> = W::weather_measurements
-        .filter(W::home_id.eq(db_home_id).and(W::source.eq(event_source::REALTIME)))
-        .select(min(W::time))
-        .first(conn)
-        .map_err(|e| format!("query earliest weather realtime failed: {}", e))?;
-    let base_from = last_hist.map(|t| t + chrono::Duration::seconds(1)).unwrap_or(start);
+        .map_err(|e| format!("query last weather timestamp failed: {}", e))?;
+    let base_from = last_any.map(|t| t + chrono::Duration::seconds(1)).unwrap_or(start);
     let from = base_from.max(start);
-    let to = earliest_rt.unwrap_or_else(Utc::now);
+    let to = Utc::now();
     Ok((from, to))
 }
 
@@ -366,54 +465,58 @@ fn backfill_zone_range(
     weather_window: Option<(DateTime<Utc>, DateTime<Utc>)>,
     day_report_spacing: Option<StdDuration>,
     day_report_sample_rate: Option<NonZeroU32>,
-    from: DateTime<Utc>,
-    to: DateTime<Utc>,
+    gaps_by_day: &BTreeMap<NaiveDate, Vec<Gap>>,
 ) -> Result<(), String> {
     use schema::climate_measurements::dsl as C;
     use schema::weather_measurements::dsl as W;
 
-    // Iterate by day using local UTC date boundaries
-    let mut cursor = from.date_naive();
-    let end_date = to.date_naive();
-    let mut effective_from = from;
+    if gaps_by_day.is_empty() {
+        return Ok(());
+    }
 
-    let first_valid_day = find_first_non_bogus_day(client, home_id, zone_id, cursor, end_date, day_report_spacing)?;
+    let first_gap_day = *gaps_by_day.keys().next().unwrap();
+    let last_gap_day = *gaps_by_day.keys().next_back().unwrap();
+
+    let first_valid_day = find_first_non_bogus_day(
+        client,
+        home_id,
+        zone_id,
+        first_gap_day,
+        last_gap_day,
+        day_report_spacing,
+    )?;
 
     let Some(first_day) = first_valid_day else {
         info!(
             "Backfill: zone {} has only bogus historical data between {} and {}; skipping",
-            zone_id.0, from, to
+            zone_id.0, first_gap_day, last_gap_day
         );
         return Ok(());
     };
 
-    if first_day > cursor {
-        cursor = first_day;
-    }
-
-    let first_day_start = first_day.and_time(NaiveTime::MIN).and_utc();
-    if first_day_start > effective_from {
-        effective_from = first_day_start;
-    }
-
     let mut inserted_total: usize = 0;
     let mut processed_days: u64 = 0;
 
-    while cursor <= end_date {
+    for (day, gaps) in gaps_by_day {
+        if *day < first_day {
+            continue;
+        }
+        if gaps.is_empty() {
+            continue;
+        }
+
         if let Some(rate) = day_report_sample_rate {
-            if cursor != first_day && cursor.ordinal() % rate.get() != 0 {
-                cursor = cursor.succ_opt().unwrap_or(NaiveDate::MAX);
+            if *day != first_day && day.ordinal() % rate.get() != 0 {
                 continue;
             }
         }
 
-        let report =
-            fetch_day_report_with_limit(client, home_id, zone_id, cursor, day_report_spacing).map_err(|e| {
-                format!(
-                    "get_zone_day_report({}, {}, {}) failed: {}",
-                    home_id.0, zone_id.0, cursor, e
-                )
-            })?;
+        let report = fetch_day_report_with_limit(client, home_id, zone_id, *day, day_report_spacing).map_err(|e| {
+            format!(
+                "get_zone_day_report({}, {}, {}) failed: {}",
+                home_id.0, zone_id.0, day, e
+            )
+        })?;
         processed_days += 1;
 
         let mut by_ts: BTreeMap<DateTime<Utc>, NewClimateMeasurement> = BTreeMap::new();
@@ -426,7 +529,7 @@ fn backfill_zone_range(
                         dp.timestamp.as_ref().cloned(),
                         dp.value.as_ref().and_then(|t| t.celsius),
                     ) {
-                        if ts < effective_from || ts >= to {
+                        if !timestamp_in_any_gap(ts, gaps) {
                             continue;
                         }
                         let entry = by_ts.entry(ts).or_insert_with(|| new_row(ts, db_home_id, db_zone_id));
@@ -437,11 +540,10 @@ fn backfill_zone_range(
             if let Some(h_series) = md.humidity.as_ref().and_then(|s| s.data_points.as_ref()) {
                 for dp in h_series {
                     if let (Some(ts), Some(val)) = (dp.timestamp.as_ref().cloned(), dp.value) {
-                        if ts < effective_from || ts >= to {
+                        if !timestamp_in_any_gap(ts, gaps) {
                             continue;
                         }
                         let entry = by_ts.entry(ts).or_insert_with(|| new_row(ts, db_home_id, db_zone_id));
-                        // Historical humidity uses UNIT_INTERVAL (0.0..1.0) — convert to percentage.
                         entry.humidity_pct = Some(val * 100.0);
                     }
                 }
@@ -453,7 +555,7 @@ fn backfill_zone_range(
             {
                 for di in conn_series {
                     if let (Some(ts), Some(val)) = (di.interval.from.as_ref().cloned(), di.value) {
-                        if ts < effective_from || ts >= to {
+                        if !timestamp_in_any_gap(ts, gaps) {
                             continue;
                         }
                         let entry = by_ts.entry(ts).or_insert_with(|| new_row(ts, db_home_id, db_zone_id));
@@ -466,7 +568,7 @@ fn backfill_zone_range(
         if let Some(cf) = report.call_for_heat.as_ref().and_then(|s| s.data_intervals.as_ref()) {
             for di in cf {
                 if let (Some(ts), Some(val)) = (di.interval.from.as_ref().cloned(), di.value) {
-                    if ts < effective_from || ts >= to {
+                    if !timestamp_in_any_gap(ts, gaps) {
                         continue;
                     }
                     let pct = match val {
@@ -484,7 +586,7 @@ fn backfill_zone_range(
         if let Some(ac) = report.ac_activity.as_ref().and_then(|s| s.data_intervals.as_ref()) {
             for di in ac {
                 if let (Some(ts), Some(val)) = (di.interval.from.as_ref().cloned(), di.value) {
-                    if ts < effective_from || ts >= to {
+                    if !timestamp_in_any_gap(ts, gaps) {
                         continue;
                     }
                     let on = matches!(val, tado::Power::On);
@@ -497,7 +599,7 @@ fn backfill_zone_range(
         if let Some(settings) = report.settings.as_ref().and_then(|s| s.data_intervals.as_ref()) {
             for di in settings {
                 if let Some(ts) = di.interval.from.as_ref().cloned() {
-                    if ts < effective_from || ts >= to {
+                    if !timestamp_in_any_gap(ts, gaps) {
                         continue;
                     }
                     if let Some(val) = di.value.as_ref() {
@@ -519,14 +621,13 @@ fn backfill_zone_range(
             }
         }
 
-        // Weather (home-scoped) piggybacked from the same day report to avoid extra API calls
         if let Some((w_from, w_to)) = weather_window
             && let Some(w) = report.weather.as_ref()
             && let Some(cond) = w.condition.as_ref().and_then(|ts| ts.data_intervals.as_ref())
         {
             for di in cond {
                 if let Some(ts) = di.interval.from.as_ref().cloned() {
-                    if ts < w_from || ts >= w_to {
+                    if ts < w_from || ts >= w_to || !timestamp_in_any_gap(ts, gaps) {
                         continue;
                     }
                     let entry = weather_by_ts
@@ -557,7 +658,6 @@ fn backfill_zone_range(
             inserted_total += inserted as usize;
         }
 
-        // Insert weather rows for this day (deduped by (home_id, time, source))
         if !weather_by_ts.is_empty() {
             let rows: Vec<NewWeatherMeasurement> = weather_by_ts.into_values().collect();
             let _ = diesel::insert_into(W::weather_measurements)
@@ -567,8 +667,6 @@ fn backfill_zone_range(
                 .execute(conn)
                 .map_err(|e| format!("insert historical weather rows failed: {}", e))?;
         }
-
-        cursor = cursor.succ_opt().unwrap_or(NaiveDate::MAX);
     }
 
     info!(
@@ -710,5 +808,34 @@ mod tests {
         remove_leading_bogus_rows(&mut rows);
         assert_eq!(rows.len(), 1);
         assert!(rows.contains_key(&ts2));
+    }
+
+    #[test]
+    fn timestamp_gap_inclusion_rules() {
+        let start = Utc.with_ymd_and_hms(2024, 1, 1, 12, 0, 0).unwrap();
+        let end = start + chrono::Duration::hours(2);
+
+        let inclusive_gap = Gap {
+            start,
+            end,
+            start_inclusive: true,
+        };
+        assert!(timestamp_in_any_gap(start, &[inclusive_gap.clone()]));
+        assert!(timestamp_in_any_gap(
+            start + chrono::Duration::minutes(15),
+            &[inclusive_gap.clone()]
+        ));
+        assert!(!timestamp_in_any_gap(end, &[inclusive_gap.clone()]));
+
+        let exclusive_gap = Gap {
+            start,
+            end,
+            start_inclusive: false,
+        };
+        assert!(!timestamp_in_any_gap(start, &[exclusive_gap.clone()]));
+        assert!(timestamp_in_any_gap(
+            start + chrono::Duration::minutes(15),
+            &[exclusive_gap]
+        ));
     }
 }

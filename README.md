@@ -5,8 +5,8 @@ This binary ingests data from the Tado API into a TimescaleDB database, then you
 
 Key behaviour:
 - Loads and writes all historical data on startup, then enters a realtime polling loop.
-- Historical backfill fills gaps up to the first realtime measurement; when no realtime data exists, it
-  continues up to "now" so the database is fully populated.
+- Tado's historical day reports return placeholder data beyond roughly one year in the past (indoors fixed at 20 C / 50% and outdoor fields null); the backfill step skips these bogus readings before inserting into TimescaleDB.
+- Historical backfill only requests days that contain measurement gaps of at least one hour (considering all sources) and limits inserts to the missing intervals to avoid duplicating existing data.
 
 Authentication (Refresh Token Only)
 -----------------------------------
@@ -28,7 +28,6 @@ How to obtain a refresh token
 Notes:
 - The program mimics the browser’s headers for both token refresh and API calls (User-Agent version configurable).
 - Tokens rotate. The app only stores the refreshed token in memory; it is not persisted. If you restart the binary, you must supply a valid refresh token again.
-- Tado's historical day reports return placeholder data beyond roughly one year in the past (indoors fixed at 20 C / 50% and outdoor fields null); the backfill step skips these bogus readings before inserting into TimescaleDB.
 
 Configuration
 -------------
