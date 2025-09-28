@@ -10,3 +10,4 @@ target/
 token.txt
 .env
 !.env.example
+*.sql
