@@ -28,6 +28,7 @@ How to obtain a refresh token
 Notes:
 - The program mimics the browser’s headers for both token refresh and API calls (User-Agent version configurable).
 - Tokens rotate. The app only stores the refreshed token in memory; it is not persisted. If you restart the binary, you must supply a valid refresh token again.
+- Tado's historical day reports return placeholder data beyond roughly one year in the past (indoors fixed at 20 C / 50% and outdoor fields null); the backfill step skips these bogus readings before inserting into TimescaleDB.
 
 Configuration
 -------------

@@ -4,7 +4,7 @@ use crate::db::models::{NewClimateMeasurement, NewWeatherMeasurement};
 use crate::models::tado::{self, HomeId, ZoneId};
 use crate::schema;
 use crate::utils::{determine_zone_start_time, serde_enum_name};
-use chrono::{DateTime, Datelike, NaiveDate, NaiveTime, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, Utc};
 use diesel::dsl::{max, min};
 use diesel::prelude::*;
 use diesel::PgConnection;
@@ -13,6 +13,131 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::thread;
 use std::time::{Duration as StdDuration, Instant};
+
+const BOGUS_TEMP_C: f64 = 20.0;
+const BOGUS_HUMIDITY_FRACTION: f64 = 0.5; // as delivered by the API (UNIT_INTERVAL)
+const BOGUS_HUMIDITY_PERCENT: f64 = 50.0; // after we scale to percentages for inserts
+const FLOAT_EPSILON: f64 = 1e-6;
+
+fn approx_eq(lhs: f64, rhs: f64) -> bool {
+    (lhs - rhs).abs() <= FLOAT_EPSILON
+}
+
+fn is_day_report_bogus(report: &tado::DayReport) -> bool {
+    let mut indoor_had_data = false;
+    let mut indoor_has_real_signal = false;
+
+    if let Some(md) = report.measured_data.as_ref() {
+        if let Some(points) = md
+            .inside_temperature
+            .as_ref()
+            .and_then(|series| series.data_points.as_ref())
+        {
+            for point in points {
+                if let Some(value) = point.value.as_ref().and_then(|t| t.celsius) {
+                    indoor_had_data = true;
+                    if !approx_eq(value, BOGUS_TEMP_C) {
+                        indoor_has_real_signal = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if !indoor_has_real_signal {
+            if let Some(points) = md.humidity.as_ref().and_then(|series| series.data_points.as_ref()) {
+                for point in points {
+                    if let Some(value) = point.value {
+                        indoor_had_data = true;
+                        if !approx_eq(value, BOGUS_HUMIDITY_FRACTION) {
+                            indoor_has_real_signal = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if indoor_has_real_signal {
+        return false;
+    }
+
+    let mut outdoor_had_data = false;
+    let mut outdoor_has_real_signal = false;
+
+    if let Some(weather) = report.weather.as_ref() {
+        if let Some(intervals) = weather
+            .condition
+            .as_ref()
+            .and_then(|series| series.data_intervals.as_ref())
+        {
+            for interval in intervals {
+                if interval.value.is_some() {
+                    outdoor_had_data = true;
+                    if let Some(value) = interval.value.as_ref() {
+                        let has_temp = value.temperature.as_ref().and_then(|temp| temp.celsius).is_some();
+                        let has_state = value.state.is_some();
+                        if has_temp || has_state {
+                            outdoor_has_real_signal = true;
+                            break;
+                        }
+                    }
+                } else {
+                    outdoor_had_data = true;
+                }
+            }
+        }
+
+        if !outdoor_has_real_signal {
+            if let Some(slots) = weather.slots.as_ref().and_then(|series| series.slots.as_ref()) {
+                for slot in slots.values() {
+                    outdoor_had_data = true;
+                    if slot.is_some() {
+                        outdoor_has_real_signal = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    let indoor_bogus = indoor_had_data && !indoor_has_real_signal;
+    let outdoor_bogus = outdoor_had_data && !outdoor_has_real_signal;
+
+    indoor_bogus && outdoor_bogus
+}
+
+fn measurement_is_leading_bogus(row: &NewClimateMeasurement) -> bool {
+    match (row.inside_temp_c, row.humidity_pct) {
+        (Some(temp), Some(humidity))
+            if approx_eq(temp, BOGUS_TEMP_C) && approx_eq(humidity, BOGUS_HUMIDITY_PERCENT) => {}
+        _ => return false,
+    }
+
+    row.setpoint_temp_c.is_none()
+        && row.heating_power_pct.is_none()
+        && row.ac_power_on.is_none()
+        && row.ac_mode.is_none()
+        && row.window_open.is_none()
+        && row.battery_low.is_none()
+        && row.connection_up.is_none()
+}
+
+fn remove_leading_bogus_rows(rows: &mut BTreeMap<DateTime<Utc>, NewClimateMeasurement>) {
+    let mut to_remove = Vec::new();
+    for (ts, row) in rows.iter() {
+        if measurement_is_leading_bogus(row) {
+            to_remove.push(*ts);
+        } else {
+            break;
+        }
+    }
+
+    for ts in to_remove {
+        rows.remove(&ts);
+    }
+}
 
 pub fn run_for_home(
     conn: &mut PgConnection,
@@ -173,6 +298,48 @@ fn compute_weather_backfill_window(
     Ok((from, to))
 }
 
+fn find_first_non_bogus_day(
+    client: &TadoClient,
+    home_id: HomeId,
+    zone_id: ZoneId,
+    start: NaiveDate,
+    end: NaiveDate,
+    min_spacing: Option<StdDuration>,
+) -> Result<Option<NaiveDate>, String> {
+    if start > end {
+        return Ok(None);
+    }
+
+    let total_days = end.signed_duration_since(start).num_days().max(0) as i64;
+
+    let mut low: i64 = 0;
+    let mut high: i64 = total_days;
+    let mut candidate: Option<NaiveDate> = None;
+
+    while low <= high {
+        let mid = low + (high - low) / 2;
+        let day = start + Duration::days(mid);
+        let report = fetch_day_report_with_limit(client, home_id, zone_id, day, min_spacing).map_err(|e| {
+            format!(
+                "get_zone_day_report({}, {}, {}) failed: {}",
+                home_id.0, zone_id.0, day, e
+            )
+        })?;
+
+        if is_day_report_bogus(&report) {
+            low = mid + 1;
+        } else {
+            candidate = Some(day);
+            if mid == 0 {
+                break;
+            }
+            high = mid - 1;
+        }
+    }
+
+    Ok(candidate)
+}
+
 fn select_reference_zone_and_start(zones: &[tado::Zone]) -> Option<(ZoneId, DateTime<Utc>)> {
     // Choose the zone with the earliest creation date as reference; ensures widest history.
     let mut best: Option<(ZoneId, DateTime<Utc>)> = None;
@@ -208,12 +375,33 @@ fn backfill_zone_range(
     // Iterate by day using local UTC date boundaries
     let mut cursor = from.date_naive();
     let end_date = to.date_naive();
+    let mut effective_from = from;
+
+    let first_valid_day = find_first_non_bogus_day(client, home_id, zone_id, cursor, end_date, day_report_spacing)?;
+
+    let Some(first_day) = first_valid_day else {
+        info!(
+            "Backfill: zone {} has only bogus historical data between {} and {}; skipping",
+            zone_id.0, from, to
+        );
+        return Ok(());
+    };
+
+    if first_day > cursor {
+        cursor = first_day;
+    }
+
+    let first_day_start = first_day.and_time(NaiveTime::MIN).and_utc();
+    if first_day_start > effective_from {
+        effective_from = first_day_start;
+    }
+
     let mut inserted_total: usize = 0;
     let mut processed_days: u64 = 0;
 
     while cursor <= end_date {
         if let Some(rate) = day_report_sample_rate {
-            if cursor.ordinal() % rate.get() != 0 {
+            if cursor != first_day && cursor.ordinal() % rate.get() != 0 {
                 cursor = cursor.succ_opt().unwrap_or(NaiveDate::MAX);
                 continue;
             }
@@ -238,7 +426,7 @@ fn backfill_zone_range(
                         dp.timestamp.as_ref().cloned(),
                         dp.value.as_ref().and_then(|t| t.celsius),
                     ) {
-                        if ts < from || ts >= to {
+                        if ts < effective_from || ts >= to {
                             continue;
                         }
                         let entry = by_ts.entry(ts).or_insert_with(|| new_row(ts, db_home_id, db_zone_id));
@@ -249,7 +437,7 @@ fn backfill_zone_range(
             if let Some(h_series) = md.humidity.as_ref().and_then(|s| s.data_points.as_ref()) {
                 for dp in h_series {
                     if let (Some(ts), Some(val)) = (dp.timestamp.as_ref().cloned(), dp.value) {
-                        if ts < from || ts >= to {
+                        if ts < effective_from || ts >= to {
                             continue;
                         }
                         let entry = by_ts.entry(ts).or_insert_with(|| new_row(ts, db_home_id, db_zone_id));
@@ -265,7 +453,7 @@ fn backfill_zone_range(
             {
                 for di in conn_series {
                     if let (Some(ts), Some(val)) = (di.interval.from.as_ref().cloned(), di.value) {
-                        if ts < from || ts >= to {
+                        if ts < effective_from || ts >= to {
                             continue;
                         }
                         let entry = by_ts.entry(ts).or_insert_with(|| new_row(ts, db_home_id, db_zone_id));
@@ -278,7 +466,7 @@ fn backfill_zone_range(
         if let Some(cf) = report.call_for_heat.as_ref().and_then(|s| s.data_intervals.as_ref()) {
             for di in cf {
                 if let (Some(ts), Some(val)) = (di.interval.from.as_ref().cloned(), di.value) {
-                    if ts < from || ts >= to {
+                    if ts < effective_from || ts >= to {
                         continue;
                     }
                     let pct = match val {
@@ -296,7 +484,7 @@ fn backfill_zone_range(
         if let Some(ac) = report.ac_activity.as_ref().and_then(|s| s.data_intervals.as_ref()) {
             for di in ac {
                 if let (Some(ts), Some(val)) = (di.interval.from.as_ref().cloned(), di.value) {
-                    if ts < from || ts >= to {
+                    if ts < effective_from || ts >= to {
                         continue;
                     }
                     let on = matches!(val, tado::Power::On);
@@ -309,7 +497,7 @@ fn backfill_zone_range(
         if let Some(settings) = report.settings.as_ref().and_then(|s| s.data_intervals.as_ref()) {
             for di in settings {
                 if let Some(ts) = di.interval.from.as_ref().cloned() {
-                    if ts < from || ts >= to {
+                    if ts < effective_from || ts >= to {
                         continue;
                     }
                     if let Some(val) = di.value.as_ref() {
@@ -355,6 +543,8 @@ fn backfill_zone_range(
                 }
             }
         }
+
+        remove_leading_bogus_rows(&mut by_ts);
 
         let rows: Vec<NewClimateMeasurement> = by_ts.into_values().collect();
         if !rows.is_empty() {
@@ -435,4 +625,90 @@ fn fetch_day_report_with_limit(
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+    use std::collections::BTreeMap;
+
+    fn load_bogus_fixture() -> tado::DayReport {
+        let json = std::fs::read_to_string("tests/data/day-report.json").expect("fixture present");
+        serde_json::from_str(&json).expect("parse day report")
+    }
+
+    #[test]
+    fn detects_bogus_fixture() {
+        let report = load_bogus_fixture();
+        assert!(is_day_report_bogus(&report));
+    }
+
+    #[test]
+    fn detects_non_bogus_when_indoor_changes() {
+        let mut report = load_bogus_fixture();
+        let md = report
+            .measured_data
+            .as_mut()
+            .and_then(|m| m.inside_temperature.as_mut())
+            .and_then(|series| series.data_points.as_mut())
+            .expect("fixture has inside temp data");
+        if let Some(first) = md.first_mut() {
+            if let Some(temp) = first.value.as_mut() {
+                temp.celsius = Some(19.5);
+            }
+        }
+
+        assert!(!is_day_report_bogus(&report));
+    }
+
+    #[test]
+    fn removes_leading_bogus_rows_only() {
+        let mut rows = BTreeMap::new();
+        let ts1 = Utc.with_ymd_and_hms(2023, 1, 1, 0, 0, 0).unwrap();
+        rows.insert(
+            ts1,
+            NewClimateMeasurement {
+                time: ts1,
+                home_id: 1,
+                zone_id: Some(1),
+                device_id: None,
+                source: event_source::HISTORICAL.to_string(),
+                inside_temp_c: Some(BOGUS_TEMP_C),
+                humidity_pct: Some(BOGUS_HUMIDITY_PERCENT),
+                setpoint_temp_c: None,
+                heating_power_pct: None,
+                ac_power_on: None,
+                ac_mode: None,
+                window_open: None,
+                battery_low: None,
+                connection_up: None,
+            },
+        );
+
+        let ts2 = Utc.with_ymd_and_hms(2023, 1, 1, 0, 15, 0).unwrap();
+        rows.insert(
+            ts2,
+            NewClimateMeasurement {
+                time: ts2,
+                home_id: 1,
+                zone_id: Some(1),
+                device_id: None,
+                source: event_source::HISTORICAL.to_string(),
+                inside_temp_c: Some(20.8),
+                humidity_pct: Some(55.0),
+                setpoint_temp_c: None,
+                heating_power_pct: None,
+                ac_power_on: None,
+                ac_mode: None,
+                window_open: None,
+                battery_low: None,
+                connection_up: None,
+            },
+        );
+
+        remove_leading_bogus_rows(&mut rows);
+        assert_eq!(rows.len(), 1);
+        assert!(rows.contains_key(&ts2));
+    }
 }
