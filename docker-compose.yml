@@ -1,8 +1,23 @@
 volumes:
+  tado_timescale_data:
   tsdb_data:
   grafana-storage:
 
 services:
+  tado-timescale:
+    image: ghcr.io/sstanovnik/tado-timescale:latest
+    env_file:
+      # create this yourself using .env.example
+      - .env
+    # persist the Tado OAuth refresh token across restarts
+    environment:
+      - TADO_REFRESH_TOKEN_PERSISTENCE_FILE=/data/refresh-token.txt
+    volumes:
+      - tado_timescale_data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+
   db:
     image: timescale/timescaledb:2.22.0-pg17
     environment:
@@ -28,3 +43,6 @@ services:
     volumes:
       - grafana-storage:/var/lib/grafana
       - ./grafana:/etc/grafana/provisioning:ro
+    depends_on:
+      db:
+        condition: service_healthy

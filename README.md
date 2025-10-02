@@ -1,54 +1,51 @@
 Tado → TimescaleDB Ingestor
 ===========================
 
-Keep every datapoint from your Tado smart heating setup in a queryable TimescaleDB warehouse ready for Grafana
-dashboards.
-The binary speaks directly to the Tado APIs, reconciles historical gaps, and keeps a realtime feed flowing without
-needing
-third-party cloud exports.
+Make your Tado data your own by slurping it all into TimescaleDB.
+Stop relying on anemic Tado reporting and instead _just use Grafana_.
 
 Highlights
 ----------
 
-- Full historical capture with gap detection so you only request the days that really need filling.
-- Realtime loop that mirrors the browser API and deduplicates measurements as they land in TimescaleDB hypertables.
-- Browser-style OAuth flow using a refresh token, with automatic rotation and optional persistence to disk.
-- Built-in Grafana provisioning and dashboards for climate, weather, and device health out of the box.
-- Optional synthetic data generator for development, demos, or validating your Grafana wiring.
+- Full historical capture with backfill gap detection so you only request the days that really need filling.
+- Realtime loop that captures high-resolution data in real time.
+- Uses a (manual) browser OAuth flow using a refresh token, with automatic rotation and persistence to disk.
+- A Grafana dashboard for climate, weather, and device health out of the box.
+- Optional synthetic data generator to play around with.
 
-How It Works
-------------
-
-1. Read configuration from environment or `--env-file`, then authenticate to Tado with a Firefox-flavoured user agent.
-2. Apply Diesel migrations and prepare TimescaleDB hypertables (`climate_measurements`, `weather_measurements`,
-   `events`).
-3. Sync reference data (homes, zones, devices, memberships) so foreign keys are satisfied for inserts.
-4. Backfill historical day reports, skipping bogus Tado placeholders and only patching gaps above the configured
-   threshold.
-5. Stream fresh realtime measurements on a fixed cadence, caching the zone mapping gathered during startup.
-6. Persist rotated refresh tokens to disk so future runs can resume without re-supplying the initial secret.
-
-Quick Start
------------
-
-1. Install prerequisites: Rust toolchain, Docker + Compose v2, and `psql`.
-2. Run `docker compose up -d db grafana` to launch TimescaleDB and Grafana locally.
-3. Obtain a Tado refresh token (see *Authentication*) and place it in `token.txt` or export
-   `INITIAL_TADO_REFRESH_TOKEN`.
-4. (Optional) Create a `.env` file to pin environment variables; the binary loads `./.env` automatically when present.
-5. Start the ingestor: `cargo run -- --env-file .env`.
-6. Open Grafana at http://localhost:3000 (default admin/admin) and load the bundled dashboard to explore the data.
+Quick Start with Docker Compose
+-------------------------------
+1. Obtain a Tado refresh token (see **Authentication**) and create an `.env` with at least:
+   ```shell
+   INITIAL_TADO_REFRESH_TOKEN=put-your-refresh-token-here
+   ```
+   For other settings, see `.env.example` and the **Configuration Reference**).
+2. Start `tado-timescale`, TimescaleDB, and Grafana:
+   ```shell
+   docker compose up -d
+   ```
+3. Open Grafana at http://localhost:3000 (default user/pass is admin/admin) and look at the bundled dashboard.
+   Depending on how much data you have, it may take a few minutes for the data to be loaded into the database.
+   After historical data is loaded, the realtime loop will start.
 
 Authentication
 --------------
 
-- Tado retired the password grant, so the CLI uses the same OAuth browser client as app.tado.com.
-- In a private/incognito window, log in to https://app.tado.com, then capture the `refresh_token` from the
-  `/oauth2/token` network call.
-- Provide that token either by creating `token.txt` (the default `TADO_REFRESH_TOKEN_PERSISTENCE_FILE`) or by exporting
-  `INITIAL_TADO_REFRESH_TOKEN` for the first run. The binary rotates tokens automatically and rewrites the persistence
-  file so subsequent launches can skip the env var.
-- Avoid sharing the same token with your everyday browser session to prevent mutual invalidation.
+- Tado [retired the password grant](https://github.com/home-assistant/core/issues/151223),
+  so `tado-timescale` uses the same OAuth browser authentication flow as the official Tado browser app.
+- This flow is unfortunately manual---at first. Once you have a refresh token, `tado-timescale` will automatically
+  rotate it and persist it to disk.
+- How to obtain a refresh token:
+  - Open a new Private-mode window.
+  - Open the Developer Tools (F12) and click on the Network tab.
+  - Optionally, type in "token" in the top search bar so you only see the relevant request.
+  - Go to https://app.tado.com and log in.
+  - You will see a request to `https://auth.tado.com/oauth2/token`.
+  - Click on the request and use the Developer Tools to inspect the response - the "Body" or "Response" tab.
+  - Copy the `refresh_token`'s value from the response.
+  - **IMPORTANT: Close the Private-mode window.**
+    This prevents your browser from storing, and automatically refreshing, the refresh token.
+    When this happens, the previous refresh token will be invalidated, and you will have to start over.
 
 Configuration Reference
 -----------------------
@@ -72,36 +69,66 @@ Configuration Reference
 Backfill Strategy & Data Quality
 --------------------------------
 
-- Tado day reports beyond ~1 year often contain placeholders (20°C / 50% humidity); those rows are filtered before
-  inserts so TimescaleDB only holds genuine measurements.
+- Tado day reports beyond ~1 year contain placeholders (20°C / 50% humidity); those rows are filtered before
+  inserts so the database only holds genuine measurements.
 - Gaps are detected per-zone using the existing TimescaleDB data; only days with ≥ `BACKFILL_MIN_GAP_MINUTES` of missing
   readings are requested, and only the missing intervals are written back.
-- Weather backfill is home-scoped and aligned with the same window to maintain consistency across dashboards.
 
 Operating Modes
 ---------------
 
 - **Normal mode:** Talk to the live Tado API, perform historical catch-up, then enter the realtime loop.
 - **Fake data mode:** Set `FAKE_DATA_MODE=true` to synthesize five years of 15-minute climate and weather data across
-  eight example zones. Useful for demos or validating dashboards without real hardware. Toggle it off again before the
-  next production run.
+  eight example zones. Useful for demos or validating dashboards without real hardware.
 
-Grafana & Observability
------------------------
+Developer Setup & Maintenance
+-----------------------------
+This section targets contributors running the project with a local Rust toolchain.
 
-- The repository ships with provisioning files under `grafana/` so a fresh Grafana instance comes preloaded with the
-  Timescale datasource and an opinionated dashboard.
-- Logs are emitted via `env_logger`; set `RUST_LOG=debug` (in `.env` or environment) for verbose tracing while
-  diagnosing
-  ingest issues.
+**Host-based workflow:**
+1. Install the Rust toolchain (`rustup`), Docker + Compose v2, and `psql`.
+2. Start supporting services: `docker compose up -d db grafana`.
+3. Capture a refresh token and either save it to `token.txt` or export `INITIAL_TADO_REFRESH_TOKEN`.
+4. Create `.env` from `.env.template` and modify as needed.
+5. Execute the binary via Cargo: `cargo run`.
+6. Visit Grafana at http://localhost:3000 (admin/admin) to verify data appears.
 
-Development & Maintenance
--------------------------
-
+**Day-to-day commands:**
 - Build (debug): `cargo build`
 - Run (foreground): `cargo run -- --env-file .env`
 - Lint: `cargo clippy --all-targets -- -D warnings`
 - Format: `cargo fmt --all`
 - Tests: `cargo test`
 - Schema regen & hypertable check: `./generate-schema.sh`
-- Bulk import past exports (CSV): `python3 transfer.py data-tado.csv`
+- Bulk import past exports: `python3 transfer.py data-tado.csv`
+
+A note you may or may not like.
+-------------------------------
+About 99% of this repository is LLM-generated.
+Sorry.
+
+I do swear that I have reviewed every single line of code, although not in-depth.
+I am not a Rust expert, but I do kind-of-sort-of know what I'm doing.
+
+It's absolutely amazing how far this takes you---but it's not, absolutely not, a replacement for a developer.
+It has definitely up the development, and, most importantly, allowed me to _~~fucking finish a fucking project for
+fucks sake why cant i ever finish what i start~~_ power through times of lacking willpower and focus.
+But if I were not at the level I am now, or hadn't known how Rust, Grafana, or the libraries I chose (yes, that was me)
+work, the LLM would just spew trash around and I wouldn't have known---and nothing would have worked.
+
+Perhaps most impressively: the initial Grafana dashboard was entirely one-shot generated by the LLM.
+I absolutely couldn't believe that it actually worked, both syntax-wise and the fact that the visualisations were
+actually useful.
+Of course, when you look closely, the dashboard has quite a few rough edges, butt-ugly SQL which is inefficient to boot,
+and I wouldn't be caught dead making this a product of my profession.
+However, for a toy project, it's perfect.
+
+Sometimes, there's just something you want to do, and you know you can't scrounge up the necessary time or willpower
+to do it yourself.
+If the quality of the work isn't really a priority, generating code is quite a nice thing.
+Just don't expect a next-token-prediction machine to make good decisions for you---that's still your responsibility.
+
+Oh, yeah, another thing nobody really ever mentions, I don't think.
+This project, to the time of writing, cost about 25 dollarydoos to LLM-generate with usage-based pricing.
+Is that a lot?
+Maybe.
