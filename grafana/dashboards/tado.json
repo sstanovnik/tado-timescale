@@ -31,12 +31,6 @@
     },
     {
       "type": "panel",
-      "id": "stat",
-      "name": "Stat",
-      "version": ""
-    },
-    {
-      "type": "panel",
       "id": "state-timeline",
       "name": "State timeline",
       "version": ""
@@ -84,295 +78,15 @@
         "x": 0,
         "y": 0
       },
-      "id": 1,
+      "id": 82,
       "panels": [],
-      "title": "Overview",
+      "title": "Basic Historical Data",
       "type": "row"
     },
     {
       "datasource": {
         "type": "postgres",
-        "uid": "${ds}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 0,
-        "y": 1
-      },
-      "id": 2,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "percentChangeColorMode": "standard",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "pluginVersion": "12.2.0-17142428006",
-      "targets": [
-        {
-          "format": "time_series",
-          "group": [],
-          "metricColumn": "none",
-          "rawQuery": true,
-          "rawSql": "SELECT w.time AS time, w.outside_temp_c AS value FROM weather_measurements w WHERE w.home_id = (SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(w.time) AND ('${source:raw}'='__all' OR w.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) ORDER BY 1",
-          "refId": "A",
-          "table": "",
-          "timeColumn": "time",
-          "where": [],
-          "datasource": {
-            "type": "postgres",
-            "uid": "${ds}"
-          }
-        }
-      ],
-      "title": "Outside Temp (°C)",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "grafana-postgresql-datasource",
-        "uid": "${ds}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 6,
-        "y": 1
-      },
-      "id": 3,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "percentChangeColorMode": "standard",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "pluginVersion": "12.2.0-17142428006",
-      "targets": [
-        {
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT w.time AS time, w.solar_intensity_pct AS value FROM weather_measurements w WHERE w.home_id = (SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(w.time) AND ('${source:raw}'='__all' OR w.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) ORDER BY 1",
-          "refId": "A",
-          "timeColumn": "time",
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "${ds}"
-          }
-        }
-      ],
-      "title": "Solar Intensity (%)",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "postgres",
-        "uid": "${ds}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "inspect": false
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 12,
-        "y": 1
-      },
-      "id": 4,
-      "options": {
-        "cellHeight": "sm",
-        "footer": {
-          "countRows": false,
-          "enablePagination": true,
-          "fields": "",
-          "reducer": [
-            "count"
-          ],
-          "show": false
-        },
-        "showHeader": true
-      },
-      "pluginVersion": "12.2.0-17142428006",
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT DISTINCT ON (z.id) z.name AS \"Zone\", c.time AS \"Time\", round(c.inside_temp_c::numeric,2) AS \"Inside (°C)\", round(c.setpoint_temp_c::numeric,2) AS \"Setpoint (°C)\", round(c.humidity_pct::numeric,1) AS \"Humidity (%)\", round(c.heating_power_pct::numeric,0) AS \"Heating (%)\" FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ($__timeTo() IS NULL OR c.time <= $__timeTo()) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) ORDER BY z.id, c.time DESC",
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "${ds}"
-          }
-        }
-      ],
-      "title": "Zone Snapshot (latest)",
-      "type": "table"
-    },
-    {
-      "datasource": {
-        "type": "grafana-postgresql-datasource",
-        "uid": "${ds}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "inspect": false
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 18,
-        "y": 1
-      },
-      "id": 5,
-      "options": {
-        "cellHeight": "sm",
-        "footer": {
-          "countRows": false,
-          "fields": "",
-          "reducer": [
-            "sum"
-          ],
-          "show": false
-        },
-        "showHeader": true
-      },
-      "pluginVersion": "12.2.0-17142428006",
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT coalesce(h.name, 'Home '||h.tado_home_id) AS \"Home\", max(c.time) FILTER (WHERE c.zone_id IS NOT NULL AND c.source='realtime') AS \"Climate (Realtime Last)\", max(w.time) FILTER (WHERE w.source='realtime') AS \"Weather (Realtime Last)\" FROM homes h LEFT JOIN climate_measurements c ON c.home_id=h.id LEFT JOIN weather_measurements w ON w.home_id=h.id GROUP BY \"Home\" ORDER BY \"Home\"",
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "${ds}"
-          }
-        }
-      ],
-      "title": "Data Freshness (per home)",
-      "type": "table"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 6
-      },
-      "id": 10,
-      "panels": [],
-      "title": "Indoor Climate",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "postgres",
-        "uid": "${ds}"
+        "uid": "${DS_TIMESCALEDB}"
       },
       "fieldConfig": {
         "defaults": {
@@ -432,9 +146,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 24,
         "x": 0,
-        "y": 7
+        "y": 1
       },
       "id": 11,
       "options": {
@@ -453,37 +167,37 @@
       "pluginVersion": "12.2.0-17142428006",
       "targets": [
         {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_TIMESCALEDB}"
+          },
           "format": "time_series",
           "rawQuery": true,
           "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name AS metric, avg(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1",
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "${ds}"
-          }
+          "refId": "A"
         },
         {
+          "datasource": {
+            "type": "postgres",
+            "uid": "${DS_TIMESCALEDB}"
+          },
           "format": "time_series",
           "rawQuery": true,
           "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name || ' (setpoint)' AS metric, avg(c.setpoint_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1",
-          "refId": "B",
-          "datasource": {
-            "type": "postgres",
-            "uid": "${ds}"
-          }
+          "refId": "B"
         },
         {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_TIMESCALEDB}"
+          },
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT ${indoor_temp_floor} as value_min, ${indoor_temp_ceiling} as value_max;",
-          "refId": "hardcoded_query_using_dashboard_variables",
-          "datasource": {
-            "type": "postgres",
-            "uid": "${ds}"
-          }
+          "refId": "hardcoded_query_using_dashboard_variables"
         }
       ],
-      "title": "Temperature vs Setpoint (per zone)",
+      "title": "Temperature vs Setpoint",
       "transformations": [
         {
           "id": "configFromData",
@@ -511,7 +225,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "${ds}"
+        "uid": "${DS_TIMESCALEDB}"
       },
       "fieldConfig": {
         "defaults": {
@@ -571,9 +285,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 7
+        "w": 24,
+        "x": 0,
+        "y": 9
       },
       "id": 12,
       "options": {
@@ -592,24 +306,24 @@
       "pluginVersion": "12.2.0-17142428006",
       "targets": [
         {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_TIMESCALEDB}"
+          },
           "format": "time_series",
           "rawQuery": true,
           "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name AS metric, avg(c.humidity_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1",
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "${ds}"
-          }
+          "refId": "A"
         },
         {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_TIMESCALEDB}"
+          },
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT ${indoor_humidity_floor} as value_min, ${indoor_humidity_ceiling} as value_max;",
-          "refId": "hardcoded_query_using_dashboard_variables",
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "${ds}"
-          }
+          "refId": "hardcoded_query_using_dashboard_variables"
         }
       ],
       "title": "Humidity (%)",
@@ -639,8 +353,308 @@
     },
     {
       "datasource": {
-        "type": "postgres",
-        "uid": "${ds}"
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_TIMESCALEDB}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "id": 31,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.2.0-17142428006",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "${DS_TIMESCALEDB}"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', w.time) AS time, 'outside' AS metric, avg(w.outside_temp_c) AS value FROM weather_measurements w WHERE w.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(w.time) AND ('${source:raw}'='__all' OR w.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Outside Temperature (°C)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_TIMESCALEDB}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 23
+      },
+      "id": 21,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.2.0-17142428006",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_TIMESCALEDB}"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name AS metric, avg(c.heating_power_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Heating Power (%)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_TIMESCALEDB}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 23
+      },
+      "id": 22,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.97,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "orientation": "auto",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        },
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "pluginVersion": "12.2.0-17142428006",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "${DS_TIMESCALEDB}"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH per_min AS ( SELECT time_bucket_gapfill('1 minute', c.time) AS minute, z.id AS zone_id, coalesce(avg(c.heating_power_pct),0) AS avg_pct FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.id ) SELECT time_bucket('1 day', minute) AS time, z.name AS metric, sum(avg_pct)/100.0 AS value FROM per_min pm JOIN zones z ON z.id=pm.zone_id GROUP BY 1, z.name ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "title": "Daily Heating Run-Minutes",
+      "type": "barchart"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 29
+      },
+      "id": 10,
+      "panels": [],
+      "title": "Indoor Climate",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_TIMESCALEDB}"
       },
       "fieldConfig": {
         "defaults": {
@@ -694,7 +708,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 15
+        "y": 30
       },
       "id": 13,
       "options": {
@@ -716,14 +730,14 @@
       "pluginVersion": "12.2.0-17142428006",
       "targets": [
         {
+          "datasource": {
+            "type": "postgres",
+            "uid": "${DS_TIMESCALEDB}"
+          },
           "format": "time_series",
           "rawQuery": true,
           "rawSql": "SELECT time_bucket_gapfill('1 minute', c.time) AS time, z.name AS metric, locf(max(CASE WHEN c.window_open IS TRUE THEN 1 ELSE 0 END)::int) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1",
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "${ds}"
-          }
+          "refId": "A"
         }
       ],
       "title": "Window Open",
@@ -735,307 +749,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 21
-      },
-      "id": 20,
-      "panels": [],
-      "title": "Heating Activity",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "grafana-postgresql-datasource",
-        "uid": "${ds}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": true,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 22
-      },
-      "id": 21,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "12.2.0-17142428006",
-      "targets": [
-        {
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name AS metric, avg(c.heating_power_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1",
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "${ds}"
-          }
-        }
-      ],
-      "title": "Heating Power (%)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "postgres",
-        "uid": "${ds}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "fillOpacity": 80,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineWidth": 1,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 22
-      },
-      "id": 22,
-      "options": {
-        "barRadius": 0,
-        "barWidth": 0.97,
-        "fullHighlight": false,
-        "groupWidth": 0.7,
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "orientation": "auto",
-        "showValue": "auto",
-        "stacking": "none",
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
-        },
-        "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 0
-      },
-      "pluginVersion": "12.2.0-17142428006",
-      "targets": [
-        {
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "WITH per_min AS ( SELECT time_bucket_gapfill('1 minute', c.time) AS minute, z.id AS zone_id, coalesce(avg(c.heating_power_pct),0) AS avg_pct FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.id ) SELECT time_bucket('1 day', minute) AS time, z.name AS metric, sum(avg_pct)/100.0 AS value FROM per_min pm JOIN zones z ON z.id=pm.zone_id GROUP BY 1, z.name ORDER BY time",
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "${ds}"
-          }
-        }
-      ],
-      "title": "Daily Heating Run-Minutes",
-      "type": "barchart"
-    },
-    {
-      "datasource": {
-        "type": "grafana-postgresql-datasource",
-        "uid": "${ds}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": true,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "celsius"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 30
-      },
-      "id": 23,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "12.2.0-17142428006",
-      "targets": [
-        {
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "WITH samples AS ( SELECT time_bucket_gapfill('5 minutes', c.time) AS bucket, z.name AS zone, avg(c.setpoint_temp_c) AS sp, avg(c.inside_temp_c) AS inside FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ) SELECT time_bucket('1 day', bucket) AS time, zone AS metric, avg(GREATEST(coalesce(sp, inside) - inside, 0)) AS value FROM samples GROUP BY 1, zone ORDER BY time",
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "${ds}"
-          }
-        }
-      ],
-      "title": "Comfort Deviation (°C)",
-      "type": "timeseries"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 38
+        "y": 36
       },
       "id": 30,
       "panels": [],
@@ -1044,202 +758,8 @@
     },
     {
       "datasource": {
-        "type": "postgres",
-        "uid": "${ds}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": true,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "celsius"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 39
-      },
-      "id": 31,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "12.2.0-17142428006",
-      "targets": [
-        {
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', w.time) AS time, 'outside' AS metric, avg(w.outside_temp_c) AS value FROM weather_measurements w WHERE w.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(w.time) AND ('${source:raw}'='__all' OR w.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 ORDER BY 1",
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "${ds}"
-          }
-        }
-      ],
-      "title": "Outside Temperature (°C)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "${ds}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": true,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 39
-      },
-      "id": 32,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "12.2.0-17142428006",
-      "targets": [
-        {
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', w.time) AS time, 'solar' AS metric, avg(w.solar_intensity_pct) AS value FROM weather_measurements w WHERE w.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(w.time) AND ('${source:raw}'='__all' OR w.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 ORDER BY 1",
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "${ds}"
-          }
-        }
-      ],
-      "title": "Solar Intensity (%)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "postgres",
-        "uid": "${ds}"
+        "uid": "${DS_TIMESCALEDB}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1319,7 +839,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 47
+        "y": 37
       },
       "id": 33,
       "options": {
@@ -1341,14 +861,14 @@
       "pluginVersion": "12.2.0-17142428006",
       "targets": [
         {
+          "datasource": {
+            "type": "postgres",
+            "uid": "${DS_TIMESCALEDB}"
+          },
           "format": "time_series",
           "rawQuery": true,
           "rawSql": "SELECT w.time AS time, '' AS metric, coalesce(w.weather_state, '<unknown>') AS value FROM weather_measurements w WHERE w.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(w.time) AND ('${source:raw}'='__all' OR w.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) ORDER BY 1",
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "${ds}"
-          }
+          "refId": "A"
         }
       ],
       "title": "Weather State",
@@ -1360,7 +880,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 53
+        "y": 43
       },
       "id": 40,
       "panels": [],
@@ -1370,31 +890,76 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "${ds}"
+        "uid": "${DS_TIMESCALEDB}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "continuous-GrYlRd"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "fillOpacity": 70,
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineWidth": 0,
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
       },
       "gridPos": {
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 54
+        "y": 44
       },
       "id": 41,
       "options": {
+        "alignValue": "left",
         "legend": {
           "displayMode": "list",
-          "placement": "right"
+          "placement": "right",
+          "showLegend": true
+        },
+        "mergeValues": true,
+        "rowHeight": 0.9,
+        "showValue": "auto",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
         }
       },
+      "pluginVersion": "12.2.0-17142428006",
       "targets": [
         {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_TIMESCALEDB}"
+          },
           "format": "time_series",
           "rawQuery": true,
           "rawSql": "SELECT time_bucket_gapfill('1 minute', c.time) AS time, coalesce(d.short_serial_no, d.tado_device_id) || ' [' || coalesce(d.device_type_desc, d.device_type, 'Unknown') || ']' AS metric, locf(max(CASE WHEN c.connection_up IS TRUE THEN 1 ELSE 0 END)::int) AS value FROM climate_measurements c JOIN devices d ON d.id=c.device_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND c.source = 'realtime' AND $__timeFilter(c.time) GROUP BY 1, metric ORDER BY 1",
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "${ds}"
-          }
+          "refId": "A"
         }
       ],
       "title": "Device Connectivity",
@@ -1402,11 +967,99 @@
     },
     {
       "datasource": {
-        "type": "postgres",
-        "uid": "${ds}"
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_TIMESCALEDB}"
       },
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "id": 43,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "12.2.0-17142428006",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_TIMESCALEDB}"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(d.short_serial_no, d.tado_device_id) || ' [' || coalesce(d.device_type_desc, d.device_type, 'Unknown') || ']' AS \"Device\", d.device_type AS \"Type\", d.device_type_desc AS \"Type Description\", d.firmware_version AS \"Firmware\", d.orientation AS \"Orientation\", d.battery_state AS \"Battery State\", d.updated_at AS \"Updated At\" FROM devices d WHERE d.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY \"Device\"",
+          "refId": "A"
+        }
+      ],
+      "title": "Device Inventory",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_TIMESCALEDB}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
         "overrides": [
           {
             "matcher": {
@@ -1414,10 +1067,6 @@
               "options": "Battery Low"
             },
             "properties": [
-              {
-                "id": "custom.displayMode",
-                "value": "color-background"
-              },
               {
                 "id": "mappings",
                 "value": [
@@ -1444,21 +1093,34 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 15,
         "x": 0,
-        "y": 62
+        "y": 60
       },
       "id": 42,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "12.2.0-17142428006",
       "targets": [
         {
+          "datasource": {
+            "type": "postgres",
+            "uid": "${DS_TIMESCALEDB}"
+          },
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT coalesce(d.short_serial_no, d.tado_device_id) || ' [' || coalesce(d.device_type_desc, d.device_type, 'Unknown') || ']' AS \"Device\", (SELECT c2.time FROM climate_measurements c2 WHERE c2.device_id=d.id ORDER BY c2.time DESC LIMIT 1) AS \"Last Seen\", (SELECT c2.battery_low FROM climate_measurements c2 WHERE c2.device_id=d.id ORDER BY c2.time DESC LIMIT 1) AS \"Battery Low\", d.battery_state AS \"Battery State\" FROM devices d WHERE d.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY \"Device\"",
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "${ds}"
-          }
+          "refId": "A"
         }
       ],
       "title": "Battery Status (latest per device)",
@@ -1467,104 +1129,103 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "${ds}"
+        "uid": "${DS_TIMESCALEDB}"
       },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 62
-      },
-      "id": 43,
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT coalesce(d.short_serial_no, d.tado_device_id) || ' [' || coalesce(d.device_type_desc, d.device_type, 'Unknown') || ']' AS \"Device\", d.device_type AS \"Type\", d.device_type_desc AS \"Type Description\", d.firmware_version AS \"Firmware\", d.orientation AS \"Orientation\", d.battery_state AS \"Battery State\", d.updated_at AS \"Updated At\" FROM devices d WHERE d.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY \"Device\"",
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "${ds}"
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
           }
-        }
-      ],
-      "title": "Device Inventory",
-      "type": "table"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 70
-      },
-      "id": 50,
-      "panels": [],
-      "title": "Events",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "postgres",
-        "uid": "${ds}"
+        },
+        "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 71
+        "w": 9,
+        "x": 15,
+        "y": 60
       },
       "id": 51,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.97,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "orientation": "auto",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        },
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "pluginVersion": "12.2.0-17142428006",
       "targets": [
         {
+          "datasource": {
+            "type": "postgres",
+            "uid": "${DS_TIMESCALEDB}"
+          },
           "format": "time_series",
           "rawQuery": true,
           "rawSql": "SELECT time_bucket(INTERVAL '$__interval', e.time) AS time, e.event_type AS metric, count(*)::float AS value FROM events e WHERE e.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(e.time) GROUP BY 1, e.event_type ORDER BY 1",
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "${ds}"
-          }
+          "refId": "A"
         }
       ],
       "title": "Event Counts (by type)",
       "type": "barchart"
     },
     {
-      "datasource": {
-        "type": "grafana-postgresql-datasource",
-        "uid": "${ds}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 71
-      },
-      "id": 52,
-      "targets": [
-        {
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT e.time AS \"Time\", coalesce(z.name,'<home>') AS \"Zone\", coalesce(d.short_serial_no, d.tado_device_id) || ' [' || coalesce(d.device_type_desc, d.device_type, 'Unknown') || ']' AS \"Device\", e.event_type AS \"Type\", e.payload AS \"Payload\" FROM events e LEFT JOIN zones z ON z.id=e.zone_id LEFT JOIN devices d ON d.id=e.device_id WHERE e.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(e.time) ORDER BY e.time DESC LIMIT 200",
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "${ds}"
-          }
-        }
-      ],
-      "title": "Recent Events",
-      "type": "table"
-    },
-    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 79
+        "y": 68
       },
       "id": 60,
       "panels": [],
@@ -1573,18 +1234,60 @@
     },
     {
       "datasource": {
-        "type": "postgres",
-        "uid": "${ds}"
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_TIMESCALEDB}"
       },
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
             "lineInterpolation": "smooth",
             "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
-            "spanNulls": true
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
           },
           "unit": "celsius"
         },
@@ -1693,42 +1396,46 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 80
+        "y": 69
       },
       "id": 61,
       "maxPerRow": 4,
       "options": {
         "legend": {
+          "calcs": [],
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "none"
         }
       },
+      "pluginVersion": "12.2.0-17142428006",
       "repeat": "zones",
       "repeatDirection": "h",
       "targets": [
         {
+          "datasource": {
+            "type": "postgres",
+            "uid": "${DS_TIMESCALEDB}"
+          },
           "format": "time_series",
           "rawQuery": true,
           "rawSql": "SELECT time_bucket('1 day', c.time) AS time, 'min' AS metric, min(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'max' AS metric, max(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'avg' AS metric, avg(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'xband' AS metric, max(c.inside_temp_c) - min(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 ORDER BY 1",
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "${ds}"
-          }
+          "refId": "A"
         },
         {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_TIMESCALEDB}"
+          },
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT ${indoor_temp_floor} as value_min, ${indoor_temp_ceiling} as value_max;",
-          "refId": "hardcoded_query_using_dashboard_variables",
-          "datasource": {
-            "type": "postgres",
-            "uid": "${ds}"
-          }
+          "refId": "hardcoded_query_using_dashboard_variables"
         }
       ],
       "title": "Inside Temp (Daily) — ${zones}",
@@ -1762,7 +1469,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 88
+        "y": 77
       },
       "id": 70,
       "panels": [],
@@ -1772,17 +1479,59 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "${ds}"
+        "uid": "${DS_TIMESCALEDB}"
       },
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
             "lineInterpolation": "smooth",
             "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
-            "spanNulls": true
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
           },
           "unit": "percent"
         },
@@ -1891,42 +1640,46 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 89
+        "y": 78
       },
       "id": 71,
       "maxPerRow": 4,
       "options": {
         "legend": {
+          "calcs": [],
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "none"
         }
       },
+      "pluginVersion": "12.2.0-17142428006",
       "repeat": "zones",
       "repeatDirection": "h",
       "targets": [
         {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_TIMESCALEDB}"
+          },
           "format": "time_series",
           "rawQuery": true,
           "rawSql": "SELECT time_bucket('1 day', c.time) AS time, 'min' AS metric, min(c.humidity_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'max' AS metric, max(c.humidity_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'avg' AS metric, avg(c.humidity_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'xband' AS metric, max(c.humidity_pct) - min(c.humidity_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 ORDER BY 1",
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "${ds}"
-          }
+          "refId": "A"
         },
         {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_TIMESCALEDB}"
+          },
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT ${indoor_humidity_floor} as value_min, ${indoor_humidity_ceiling} as value_max;",
-          "refId": "hardcoded_query_using_dashboard_variables",
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "${ds}"
-          }
+          "refId": "hardcoded_query_using_dashboard_variables"
         }
       ],
       "title": "Humidity (Daily) — ${zones}",
@@ -1960,7 +1713,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 97
+        "y": 86
       },
       "id": 80,
       "panels": [],
@@ -1969,8 +1722,8 @@
     },
     {
       "datasource": {
-        "type": "postgres",
-        "uid": "${ds}"
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_TIMESCALEDB}"
       },
       "fieldConfig": {
         "defaults": {
@@ -2032,7 +1785,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 98
+        "y": 87
       },
       "id": 81,
       "options": {
@@ -2048,12 +1801,13 @@
           "sort": "none"
         }
       },
+      "pluginVersion": "12.2.0-17142428006",
       "targets": [
         {
           "dataset": "tado",
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "${ds}"
+            "uid": "${DS_TIMESCALEDB}"
           },
           "editorMode": "code",
           "format": "time_series",
@@ -2087,14 +1841,14 @@
           "table": "climate_measurements"
         },
         {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_TIMESCALEDB}"
+          },
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT ${indoor_temp_floor} as value_min, ${indoor_temp_ceiling} as value_max;",
-          "refId": "hardcoded_query_using_dashboard_variables",
-          "datasource": {
-            "type": "postgres",
-            "uid": "${ds}"
-          }
+          "refId": "hardcoded_query_using_dashboard_variables"
         }
       ],
       "timeFrom": "now/y",
@@ -2127,18 +1881,14 @@
   ],
   "refresh": "1m",
   "schemaVersion": 41,
-  "tags": [
-    "tado",
-    "timescale",
-    "heating"
-  ],
+  "tags": [],
   "templating": {
     "list": [
       {
         "current": {},
         "includeAll": false,
         "label": "Datasource",
-        "name": "ds",
+        "name": "DS_TIMESCALEDB",
         "options": [],
         "query": "postgres",
         "refresh": 1,
@@ -2148,7 +1898,7 @@
         "current": {},
         "datasource": {
           "type": "postgres",
-          "uid": "${ds}"
+          "uid": "${DS_TIMESCALEDB}"
         },
         "definition": "SELECT coalesce(name, 'Home '||tado_home_id) AS __text, coalesce(name, 'Home '||tado_home_id) AS __value FROM homes ORDER BY 1",
         "includeAll": false,
@@ -2164,7 +1914,7 @@
         "current": {},
         "datasource": {
           "type": "grafana-postgresql-datasource",
-          "uid": "${ds}"
+          "uid": "${DS_TIMESCALEDB}"
         },
         "definition": "SELECT coalesce(name, 'Zone '||tado_zone_id) AS __text, coalesce(name, 'Zone '||tado_zone_id) AS __value FROM zones WHERE home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY 1",
         "includeAll": true,
@@ -2180,7 +1930,7 @@
         "current": {},
         "datasource": {
           "type": "postgres",
-          "uid": "${ds}"
+          "uid": "${DS_TIMESCALEDB}"
         },
         "definition": "SELECT id AS value, coalesce(short_serial_no, tado_device_id) || ' [' || coalesce(device_type_desc, device_type, 'Unknown') || ']' AS label FROM devices WHERE home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY label",
         "hide": 2,
@@ -2308,7 +2058,7 @@
   },
   "timezone": "browser",
   "title": "Tado Dashboard",
-  "uid": "b79fd5c2-cea5-47c9-b332-c994a0bf744c",
+  "uid": "345a2507-3e78-482f-bf2d-4c2d98898ccb",
   "version": 1,
   "weekStart": ""
 }
