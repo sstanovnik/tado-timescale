@@ -171,30 +171,84 @@
             "type": "grafana-postgresql-datasource",
             "uid": "${DS_TIMESCALEDB}"
           },
+          "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name AS metric, avg(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1",
-          "refId": "A"
+          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name AS metric, avg(c.inside_temp_c) AS value\nFROM climate_measurements c\n         JOIN zones z ON z.id = c.zone_id\nWHERE c.home_id = (SELECT id FROM homes WHERE coalesce(name, 'Home ' || tado_home_id) = '${home}' LIMIT 1)\n  AND ('${zones:raw}' = '__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[]))\n  AND $__timeFilter(c.time)\n  AND ('${source:raw}'='__all'\n   OR c.source = ANY (regexp_split_to_array('${source:raw}'\n    , '\\s*,\\s*')::text []))\nGROUP BY 1, z.name\nORDER BY 1",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         },
         {
           "datasource": {
             "type": "postgres",
             "uid": "${DS_TIMESCALEDB}"
           },
+          "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name || ' (setpoint)' AS metric, avg(c.setpoint_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1",
-          "refId": "B"
+          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time,\n       z.name || ' (setpoint)'                             AS metric,\n       avg(c.setpoint_temp_c)                              AS value\nFROM climate_measurements c\n         JOIN zones z ON z.id = c.zone_id\nWHERE c.home_id = (SELECT id FROM homes WHERE coalesce(name, 'Home ' || tado_home_id) = '${home}' LIMIT 1)\n  AND ('${zones:raw}' = '__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[]))\n  AND $__timeFilter(c.time)\n  AND ('${source:raw}'='__all'\n   OR c.source = ANY (regexp_split_to_array('${source:raw}'\n    , '\\s*,\\s*')::text []))\nGROUP BY 1, z.name\nORDER BY 1",
+          "refId": "B",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         },
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
             "uid": "${DS_TIMESCALEDB}"
           },
+          "editorMode": "code",
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT ${indoor_temp_floor} as value_min, ${indoor_temp_ceiling} as value_max;",
-          "refId": "hardcoded_query_using_dashboard_variables"
+          "refId": "hardcoded_query_using_dashboard_variables",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         }
       ],
       "title": "Temperature vs Setpoint",
@@ -310,20 +364,56 @@
             "type": "grafana-postgresql-datasource",
             "uid": "${DS_TIMESCALEDB}"
           },
+          "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name AS metric, avg(c.humidity_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1",
-          "refId": "A"
+          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name AS metric, avg(c.humidity_pct) AS value\nFROM climate_measurements c\n         JOIN zones z ON z.id = c.zone_id\nWHERE c.home_id = (SELECT id FROM homes WHERE coalesce(name, 'Home ' || tado_home_id) = '${home}' LIMIT 1)\n  AND ('${zones:raw}' = '__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[]))\n  AND $__timeFilter(c.time)\n  AND ('${source:raw}'='__all'\n   OR c.source = ANY (regexp_split_to_array('${source:raw}'\n    , '\\s*,\\s*')::text []))\nGROUP BY 1, z.name\nORDER BY 1",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         },
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
             "uid": "${DS_TIMESCALEDB}"
           },
+          "editorMode": "code",
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT ${indoor_humidity_floor} as value_min, ${indoor_humidity_ceiling} as value_max;",
-          "refId": "hardcoded_query_using_dashboard_variables"
+          "refId": "hardcoded_query_using_dashboard_variables",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         }
       ],
       "title": "Humidity (%)",
@@ -439,10 +529,28 @@
             "type": "postgres",
             "uid": "${DS_TIMESCALEDB}"
           },
+          "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', w.time) AS time, 'outside' AS metric, avg(w.outside_temp_c) AS value FROM weather_measurements w WHERE w.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(w.time) AND ('${source:raw}'='__all' OR w.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 ORDER BY 1",
-          "refId": "A"
+          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', w.time) AS time,\n       'outside'                                           AS metric,\n       avg(w.outside_temp_c)                               AS value\nFROM weather_measurements w\nWHERE w.home_id = (SELECT id FROM homes WHERE coalesce(name, 'Home ' || tado_home_id) = '${home}' LIMIT 1)\n  AND $__timeFilter(w.time)\n  AND ('${source:raw}'='__all'\n   OR w.source = ANY (regexp_split_to_array('${source:raw}'\n    , '\\s*,\\s*')::text []))\nGROUP BY 1\nORDER BY 1",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         }
       ],
       "title": "Outside Temperature (°C)",
@@ -536,10 +644,28 @@
             "type": "grafana-postgresql-datasource",
             "uid": "${DS_TIMESCALEDB}"
           },
+          "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time, z.name AS metric, avg(c.heating_power_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1",
-          "refId": "A"
+          "rawSql": "SELECT time_bucket_gapfill(INTERVAL '$__interval', c.time) AS time,\n       z.name                                              AS metric,\n       avg(c.heating_power_pct)                            AS value\nFROM climate_measurements c\n         JOIN zones z ON z.id = c.zone_id\nWHERE c.home_id = (SELECT id FROM homes WHERE coalesce(name, 'Home ' || tado_home_id) = '${home}' LIMIT 1)\n  AND ('${zones:raw}' = '__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[]))\n  AND $__timeFilter(c.time)\n  AND ('${source:raw}'='__all'\n   OR c.source = ANY (regexp_split_to_array('${source:raw}'\n    , '\\s*,\\s*')::text []))\nGROUP BY 1, z.name\nORDER BY 1",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         }
       ],
       "title": "Heating Power (%)",
@@ -629,10 +755,28 @@
             "type": "postgres",
             "uid": "${DS_TIMESCALEDB}"
           },
+          "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "WITH per_min AS ( SELECT time_bucket_gapfill('1 minute', c.time) AS minute, z.id AS zone_id, coalesce(avg(c.heating_power_pct),0) AS avg_pct FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.id ) SELECT time_bucket('1 day', minute) AS time, z.name AS metric, sum(avg_pct)/100.0 AS value FROM per_min pm JOIN zones z ON z.id=pm.zone_id GROUP BY 1, z.name ORDER BY time",
-          "refId": "A"
+          "rawSql": "WITH per_min AS (SELECT time_bucket_gapfill('1 minute', c.time) AS minute,\n                        z.id                                    AS zone_id,\n                        coalesce(avg(c.heating_power_pct), 0)   AS avg_pct\n                 FROM climate_measurements c\n                          JOIN zones z ON z.id = c.zone_id\n                 WHERE c.home_id =\n                       (SELECT id FROM homes WHERE coalesce(name, 'Home ' || tado_home_id) = '${home}' LIMIT 1)\n                   AND ('${zones:raw}' = '__all' OR\n                        z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[]))\n                   AND $__timeFilter(c.time)\n                   AND ('${source:raw}'='__all'\n                    OR c.source = ANY (regexp_split_to_array('${source:raw}'\n                     , '\\s*,\\s*')::text []))\n                 GROUP BY 1, z.id)\nSELECT time_bucket('1 day', minute) AS time, z.name AS metric, sum(avg_pct) / 100.0 AS value\nFROM per_min pm\n         JOIN zones z ON z.id = pm.zone_id\nGROUP BY 1, z.name\nORDER BY time",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         }
       ],
       "title": "Daily Heating Run-Minutes",
@@ -734,10 +878,28 @@
             "type": "postgres",
             "uid": "${DS_TIMESCALEDB}"
           },
+          "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time_bucket_gapfill('1 minute', c.time) AS time, z.name AS metric, locf(max(CASE WHEN c.window_open IS TRUE THEN 1 ELSE 0 END)::int) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) GROUP BY 1, z.name ORDER BY 1",
-          "refId": "A"
+          "rawSql": "SELECT time_bucket_gapfill('1 minute', c.time)                           AS time,\n       z.name                                                            AS metric,\n       locf(max(CASE WHEN c.window_open IS TRUE THEN 1 ELSE 0 END)::int) AS value\nFROM climate_measurements c\n         JOIN zones z ON z.id = c.zone_id\nWHERE c.home_id = (SELECT id FROM homes WHERE coalesce(name, 'Home ' || tado_home_id) = '${home}' LIMIT 1)\n  AND ('${zones:raw}' = '__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[]))\n  AND $__timeFilter(c.time)\n  AND ('${source:raw}'='__all'\n   OR c.source = ANY (regexp_split_to_array('${source:raw}'\n    , '\\s*,\\s*')::text []))\nGROUP BY 1, z.name\nORDER BY 1",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         }
       ],
       "title": "Window Open",
@@ -865,10 +1027,28 @@
             "type": "postgres",
             "uid": "${DS_TIMESCALEDB}"
           },
+          "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT w.time AS time, '' AS metric, coalesce(w.weather_state, '<unknown>') AS value FROM weather_measurements w WHERE w.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(w.time) AND ('${source:raw}'='__all' OR w.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) ORDER BY 1",
-          "refId": "A"
+          "rawSql": "SELECT w.time AS time, '' AS metric, coalesce(w.weather_state, '<unknown>') AS value\nFROM weather_measurements w\nWHERE w.home_id = (SELECT id FROM homes WHERE coalesce(name, 'Home ' || tado_home_id) = '${home}' LIMIT 1)\n  AND $__timeFilter(w.time)\n  AND ('${source:raw}'='__all'\n   OR w.source = ANY (regexp_split_to_array('${source:raw}'\n    , '\\s*,\\s*')::text []))\nORDER BY 1",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         }
       ],
       "title": "Weather State",
@@ -956,10 +1136,28 @@
             "type": "grafana-postgresql-datasource",
             "uid": "${DS_TIMESCALEDB}"
           },
+          "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time_bucket_gapfill('1 minute', c.time) AS time, coalesce(d.short_serial_no, d.tado_device_id) || ' [' || coalesce(d.device_type_desc, d.device_type, 'Unknown') || ']' AS metric, locf(max(CASE WHEN c.connection_up IS TRUE THEN 1 ELSE 0 END)::int) AS value FROM climate_measurements c JOIN devices d ON d.id=c.device_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND c.source = 'realtime' AND $__timeFilter(c.time) GROUP BY 1, metric ORDER BY 1",
-          "refId": "A"
+          "rawSql": "SELECT time_bucket_gapfill('1 minute', c.time)                             AS time,\n       coalesce(d.short_serial_no, d.tado_device_id) || ' [' ||\n       coalesce(d.device_type_desc, d.device_type, 'Unknown') || ']'       AS metric,\n       locf(max(CASE WHEN c.connection_up IS TRUE THEN 1 ELSE 0 END)::int) AS value\nFROM climate_measurements c\n         JOIN devices d ON d.id = c.device_id\nWHERE c.home_id = (SELECT id FROM homes WHERE coalesce(name, 'Home ' || tado_home_id) = '${home}' LIMIT 1)\n  AND c.source = 'realtime'\n  AND $__timeFilter(c.time)\nGROUP BY 1, metric\nORDER BY 1",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         }
       ],
       "title": "Device Connectivity",
@@ -1022,10 +1220,28 @@
             "type": "grafana-postgresql-datasource",
             "uid": "${DS_TIMESCALEDB}"
           },
+          "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT coalesce(d.short_serial_no, d.tado_device_id) || ' [' || coalesce(d.device_type_desc, d.device_type, 'Unknown') || ']' AS \"Device\", d.device_type AS \"Type\", d.device_type_desc AS \"Type Description\", d.firmware_version AS \"Firmware\", d.orientation AS \"Orientation\", d.battery_state AS \"Battery State\", d.updated_at AS \"Updated At\" FROM devices d WHERE d.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY \"Device\"",
-          "refId": "A"
+          "rawSql": "SELECT\n    coalesce(d.short_serial_no, d.tado_device_id) || ' [' || coalesce(d.device_type_desc, d.device_type, 'Unknown') ||\n    ']'                AS \"Device\",\n    d.device_type      AS \"Type\",\n    d.device_type_desc AS \"Type Description\",\n    d.firmware_version AS \"Firmware\",\n    d.orientation      AS \"Orientation\",\n    d.battery_state    AS \"Battery State\",\n    d.updated_at       AS \"Updated At\"\nFROM devices d\nWHERE d.home_id = (SELECT id FROM homes WHERE coalesce(name, 'Home ' || tado_home_id) = '${home}' LIMIT 1)\nORDER BY \"Device\"",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         }
       ],
       "title": "Device Inventory",
@@ -1117,10 +1333,28 @@
             "type": "postgres",
             "uid": "${DS_TIMESCALEDB}"
           },
+          "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT coalesce(d.short_serial_no, d.tado_device_id) || ' [' || coalesce(d.device_type_desc, d.device_type, 'Unknown') || ']' AS \"Device\", (SELECT c2.time FROM climate_measurements c2 WHERE c2.device_id=d.id ORDER BY c2.time DESC LIMIT 1) AS \"Last Seen\", (SELECT c2.battery_low FROM climate_measurements c2 WHERE c2.device_id=d.id ORDER BY c2.time DESC LIMIT 1) AS \"Battery Low\", d.battery_state AS \"Battery State\" FROM devices d WHERE d.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) ORDER BY \"Device\"",
-          "refId": "A"
+          "rawSql": "SELECT\n    coalesce(d.short_serial_no, d.tado_device_id) || ' [' || coalesce(d.device_type_desc, d.device_type, 'Unknown') ||\n    ']'                                                                                                          AS \"Device\",\n    (SELECT c2.time\n     FROM climate_measurements c2\n     WHERE c2.device_id = d.id\n     ORDER BY c2.time DESC\n     LIMIT 1)                                                                                                    AS \"Last Seen\",\n    (SELECT c2.battery_low\n     FROM climate_measurements c2\n     WHERE c2.device_id = d.id\n     ORDER BY c2.time DESC\n     LIMIT 1)                                                                                                    AS \"Battery Low\",\n    d.battery_state                                                                                              AS \"Battery State\"\nFROM devices d\nWHERE d.home_id = (SELECT id FROM homes WHERE coalesce(name, 'Home ' || tado_home_id) = '${home}' LIMIT 1)\nORDER BY \"Device\"",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         }
       ],
       "title": "Battery Status (latest per device)",
@@ -1210,10 +1444,28 @@
             "type": "postgres",
             "uid": "${DS_TIMESCALEDB}"
           },
+          "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time_bucket(INTERVAL '$__interval', e.time) AS time, e.event_type AS metric, count(*)::float AS value FROM events e WHERE e.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(e.time) GROUP BY 1, e.event_type ORDER BY 1",
-          "refId": "A"
+          "rawSql": "SELECT time_bucket(INTERVAL '$__interval', e.time) AS time, e.event_type AS metric, count(*)::float AS value\nFROM events e\nWHERE e.home_id = (SELECT id FROM homes WHERE coalesce(name, 'Home ' || tado_home_id) = '${home}' LIMIT 1)\n  AND $__timeFilter(e.time)\nGROUP BY 1, e.event_type\nORDER BY 1",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         }
       ],
       "title": "Event Counts (by type)",
@@ -1422,10 +1674,28 @@
             "type": "postgres",
             "uid": "${DS_TIMESCALEDB}"
           },
+          "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time_bucket('1 day', c.time) AS time, 'min' AS metric, min(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'max' AS metric, max(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'avg' AS metric, avg(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'xband' AS metric, max(c.inside_temp_c) - min(c.inside_temp_c) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 ORDER BY 1",
-          "refId": "A"
+          "rawSql": "SELECT time_bucket('1 day', c.time) AS time, 'min' AS metric, min(c.inside_temp_c) AS value\nFROM climate_measurements c\n         JOIN zones z ON z.id = c.zone_id\nWHERE c.home_id = (SELECT id FROM homes WHERE coalesce(name, 'Home ' || tado_home_id) = '${home}' LIMIT 1)\n  AND $__timeFilter(c.time)\n  AND ('${source:raw}'='__all'\n   OR c.source = ANY (regexp_split_to_array('${source:raw}'\n    , '\\s*,\\s*')::text []))\n  AND ('${zones:raw}'='__all'\n   OR z.name = ANY (regexp_split_to_array('${zones:raw}'\n    , '\\s*,\\s*')::text []))\nGROUP BY 1\nUNION ALL\nSELECT time_bucket('1 day', c.time) AS time, 'max' AS metric, max(c.inside_temp_c) AS value\nFROM climate_measurements c JOIN zones z\nON z.id= c.zone_id\nWHERE c.home_id=(SELECT id FROM homes WHERE coalesce (name\n    , 'Home '||tado_home_id)='${home}' LIMIT 1)\n  AND $__timeFilter(c.time)\n  AND ('${source:raw}'='__all'\n   OR c.source = ANY (regexp_split_to_array('${source:raw}'\n    , '\\s*,\\s*')::text []))\n  AND ('${zones:raw}'='__all'\n   OR z.name = ANY (regexp_split_to_array('${zones:raw}'\n    , '\\s*,\\s*')::text []))\nGROUP BY 1\nUNION ALL\nSELECT time_bucket('1 day', c.time) AS time, 'avg' AS metric, avg(c.inside_temp_c) AS value\nFROM climate_measurements c JOIN zones z\nON z.id= c.zone_id\nWHERE c.home_id=(SELECT id FROM homes WHERE coalesce (name\n    , 'Home '||tado_home_id)='${home}' LIMIT 1)\n  AND $__timeFilter(c.time)\n  AND ('${source:raw}'='__all'\n   OR c.source = ANY (regexp_split_to_array('${source:raw}'\n    , '\\s*,\\s*')::text []))\n  AND ('${zones:raw}'='__all'\n   OR z.name = ANY (regexp_split_to_array('${zones:raw}'\n    , '\\s*,\\s*')::text []))\nGROUP BY 1\nUNION ALL\nSELECT time_bucket('1 day', c.time) AS time, 'xband' AS metric, max(c.inside_temp_c) - min (c.inside_temp_c) AS value\nFROM climate_measurements c JOIN zones z\nON z.id= c.zone_id\nWHERE c.home_id=(SELECT id FROM homes WHERE coalesce (name\n    , 'Home '||tado_home_id)='${home}' LIMIT 1)\n  AND $__timeFilter(c.time)\n  AND ('${source:raw}'='__all'\n   OR c.source = ANY (regexp_split_to_array('${source:raw}'\n    , '\\s*,\\s*')::text []))\n  AND ('${zones:raw}'='__all'\n   OR z.name = ANY (regexp_split_to_array('${zones:raw}'\n    , '\\s*,\\s*')::text []))\nGROUP BY 1\nORDER BY 1",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         },
         {
           "datasource": {
@@ -1666,10 +1936,28 @@
             "type": "grafana-postgresql-datasource",
             "uid": "${DS_TIMESCALEDB}"
           },
+          "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time_bucket('1 day', c.time) AS time, 'min' AS metric, min(c.humidity_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'max' AS metric, max(c.humidity_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'avg' AS metric, avg(c.humidity_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 UNION ALL SELECT time_bucket('1 day', c.time) AS time, 'xband' AS metric, max(c.humidity_pct) - min(c.humidity_pct) AS value FROM climate_measurements c JOIN zones z ON z.id=c.zone_id WHERE c.home_id=(SELECT id FROM homes WHERE coalesce(name, 'Home '||tado_home_id)='${home}' LIMIT 1) AND $__timeFilter(c.time) AND ('${source:raw}'='__all' OR c.source = ANY (regexp_split_to_array('${source:raw}', '\\s*,\\s*')::text[])) AND ('${zones:raw}'='__all' OR z.name = ANY (regexp_split_to_array('${zones:raw}', '\\s*,\\s*')::text[])) GROUP BY 1 ORDER BY 1",
-          "refId": "A"
+          "rawSql": "SELECT time_bucket('1 day', c.time) AS time, 'min' AS metric, min(c.humidity_pct) AS value\nFROM climate_measurements c\n         JOIN zones z ON z.id = c.zone_id\nWHERE c.home_id = (SELECT id FROM homes WHERE coalesce(name, 'Home ' || tado_home_id) = '${home}' LIMIT 1)\n  AND $__timeFilter(c.time)\n  AND ('${source:raw}'='__all'\n   OR c.source = ANY (regexp_split_to_array('${source:raw}'\n    , '\\s*,\\s*')::text []))\n  AND ('${zones:raw}'='__all'\n   OR z.name = ANY (regexp_split_to_array('${zones:raw}'\n    , '\\s*,\\s*')::text []))\nGROUP BY 1\nUNION ALL\nSELECT time_bucket('1 day', c.time) AS time, 'max' AS metric, max(c.humidity_pct) AS value\nFROM climate_measurements c JOIN zones z\nON z.id= c.zone_id\nWHERE c.home_id=(SELECT id FROM homes WHERE coalesce (name\n    , 'Home '||tado_home_id)='${home}' LIMIT 1)\n  AND $__timeFilter(c.time)\n  AND ('${source:raw}'='__all'\n   OR c.source = ANY (regexp_split_to_array('${source:raw}'\n    , '\\s*,\\s*')::text []))\n  AND ('${zones:raw}'='__all'\n   OR z.name = ANY (regexp_split_to_array('${zones:raw}'\n    , '\\s*,\\s*')::text []))\nGROUP BY 1\nUNION ALL\nSELECT time_bucket('1 day', c.time) AS time, 'avg' AS metric, avg(c.humidity_pct) AS value\nFROM climate_measurements c JOIN zones z\nON z.id= c.zone_id\nWHERE c.home_id=(SELECT id FROM homes WHERE coalesce (name\n    , 'Home '||tado_home_id)='${home}' LIMIT 1)\n  AND $__timeFilter(c.time)\n  AND ('${source:raw}'='__all'\n   OR c.source = ANY (regexp_split_to_array('${source:raw}'\n    , '\\s*,\\s*')::text []))\n  AND ('${zones:raw}'='__all'\n   OR z.name = ANY (regexp_split_to_array('${zones:raw}'\n    , '\\s*,\\s*')::text []))\nGROUP BY 1\nUNION ALL\nSELECT time_bucket('1 day', c.time) AS time, 'xband' AS metric, max(c.humidity_pct) - min (c.humidity_pct) AS value\nFROM climate_measurements c JOIN zones z\nON z.id= c.zone_id\nWHERE c.home_id=(SELECT id FROM homes WHERE coalesce (name\n    , 'Home '||tado_home_id)='${home}' LIMIT 1)\n  AND $__timeFilter(c.time)\n  AND ('${source:raw}'='__all'\n   OR c.source = ANY (regexp_split_to_array('${source:raw}'\n    , '\\s*,\\s*')::text []))\n  AND ('${zones:raw}'='__all'\n   OR z.name = ANY (regexp_split_to_array('${zones:raw}'\n    , '\\s*,\\s*')::text []))\nGROUP BY 1\nORDER BY 1",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         },
         {
           "datasource": {
