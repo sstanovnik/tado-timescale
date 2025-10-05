@@ -73,20 +73,15 @@ struct OAuthState {
 pub struct TadoClient {
     agent: ureq::Agent,
     oauth: RefCell<OAuthState>,
-    firefox_version: String,
+    user_agent: String,
     refresh_token_path: PathBuf,
     max_server_error_retries: NonZeroU32,
 }
 
 impl TadoClient {
     fn browser_headers(&self) -> Vec<(&'static str, String)> {
-        let ver = &self.firefox_version;
-        let ua = format!(
-            "Mozilla/5.0 (X11; Linux x86_64; rv:{v}) Gecko/20100101 Firefox/{v}",
-            v = ver
-        );
         vec![
-            ("User-Agent", ua),
+            ("User-Agent", self.user_agent.clone()),
             ("Accept", "application/json, text/plain, */*".to_string()),
             ("Accept-Language", "en-US,en;q=0.5".to_string()),
             // Only advertise encodings that the client can transparently decode.
@@ -105,7 +100,7 @@ impl TadoClient {
     }
     pub fn new(
         initial_refresh_token: impl Into<String>,
-        firefox_version: impl Into<String>,
+        user_agent: impl Into<String>,
         refresh_token_path: impl Into<PathBuf>,
         max_server_error_retries: NonZeroU32,
     ) -> Result<Self, TadoClientError> {
@@ -117,7 +112,7 @@ impl TadoClient {
                 token: None,
                 refresh_token: initial_refresh_token.into(),
             }),
-            firefox_version: firefox_version.into(),
+            user_agent: user_agent.into(),
             refresh_token_path: refresh_token_path.into(),
             max_server_error_retries,
         };

@@ -61,7 +61,7 @@ Configuration Reference
 | `BACKFILL_SAMPLE_RATE`                | _unset_                                            | Sample day reports using `1/N` syntax, e.g. `1/3`.                  |
 | `BACKFILL_MIN_GAP_MINUTES`            | `240`                                              | Minimum gap length that qualifies for historical patching.          |
 | `MAX_REQUEST_RETRIES`                 | `3`                                                | Retry budget for 5xx responses when calling Tado.                   |
-| `TADO_FIREFOX_VERSION`                | `143.0`                                            | Firefox version advertised in the spoofed User-Agent.               |
+| `TADO_CLIENT_USER_AGENT`              | Chrome 138 on Windows 11                           | Chrome user agent string advertised in outbound requests.           |
 | `TADO_REFRESH_TOKEN_PERSISTENCE_FILE` | `token.txt`                                        | Where the rotated refresh token is stored.                          |
 | `INITIAL_TADO_REFRESH_TOKEN`          | _required once_                                    | Seed token used when the persistence file is missing.               |
 | `FAKE_DATA_MODE`                      | `false`                                            | Generate synthetic data and skip the Tado API entirely.             |

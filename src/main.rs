@@ -88,7 +88,7 @@ pub fn run() -> Result<(), String> {
     // 4) Init Tado client
     let client = TadoClient::new(
         &cfg.tado_refresh_token,
-        &cfg.tado_firefox_version,
+        &cfg.tado_client_user_agent,
         cfg.tado_refresh_token_file.clone(),
         cfg.max_request_retries,
     )

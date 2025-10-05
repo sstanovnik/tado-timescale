@@ -19,8 +19,8 @@ pub struct Config {
     pub tado_refresh_token: String,
     /// Path used to persist rotated refresh tokens.
     pub tado_refresh_token_file: PathBuf,
-    /// Firefox version to spoof in the User-Agent (e.g. "143.0").
-    pub tado_firefox_version: String,
+    /// User-Agent string advertised to the Tado API (defaults to a Chrome desktop agent).
+    pub tado_client_user_agent: String,
     /// Realtime polling cadence.
     pub realtime_interval: Duration,
     /// Allow skipping the realtime polling loop on startup.
@@ -88,7 +88,10 @@ impl Config {
             return Err("REALTIME_INTERVAL_SECS must be at least 1".to_string());
         }
 
-        let tado_firefox_version = env::var("TADO_FIREFOX_VERSION").unwrap_or_else(|_| "143.0".to_string());
+        let tado_client_user_agent = env::var("TADO_CLIENT_USER_AGENT").unwrap_or_else(|_| {
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+                .to_string()
+        });
 
         let realtime_enabled = env_bool("REALTIME_ENABLED", true)?;
 
@@ -142,7 +145,7 @@ impl Config {
             database_url,
             tado_refresh_token,
             tado_refresh_token_file,
-            tado_firefox_version,
+            tado_client_user_agent,
             realtime_interval: Duration::from_secs(realtime_secs),
             realtime_enabled,
             backfill_enabled,
