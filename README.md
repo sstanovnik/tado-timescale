@@ -1,5 +1,5 @@
-Tado → TimescaleDB Ingestor
-===========================
+Get your data from Tado into TimescaleDB, then Grafana
+======================================================
 
 Make your Tado data your own by slurping it all into TimescaleDB.
 Stop relying on anemic Tado reporting and instead _just use Grafana_.
