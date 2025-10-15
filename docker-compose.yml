@@ -1,6 +1,7 @@
 volumes:
   tado_timescale_data:
   tsdb_data:
+  tsdb_data2:
   grafana-storage:
 
 services:
@@ -11,7 +12,7 @@ services:
       - .env
     # persist the Tado OAuth refresh token across restarts
     environment:
-      - TADO_REFRESH_TOKEN_PERSISTENCE_FILE=/data/refresh-token.txt
+      TADO_REFRESH_TOKEN_PERSISTENCE_FILE: /data/refresh-token.txt
     volumes:
       - tado_timescale_data:/data
     depends_on:
