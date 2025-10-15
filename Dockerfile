@@ -52,8 +52,9 @@ FROM alpine:3.20 AS runtime
 
 WORKDIR /app
 
-# Runtime dependencies for libpq and TLS, plus CA bundle for HTTPS
+# Runtime dependencies for libpq, TLS, libgcc runtime, plus CA bundle for HTTPS
 RUN apk add --no-cache \
+        libgcc \
         postgresql-libs \
         openssl \
         ca-certificates
