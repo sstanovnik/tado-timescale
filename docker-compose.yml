@@ -1,7 +1,6 @@
 volumes:
   tado_timescale_data:
   tsdb_data:
-  tsdb_data2:
   grafana-storage:
 
 services:
